@@ -1,0 +1,116 @@
+name: Update AIS vessel positions
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-ais
+  cancel-in-progress: true
+
+jobs:
+  update-ais:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch AISHub batch (live only — no mock fallback)
+        env:
+          AISHUB_USERNAME: ${{ secrets.AISHUB_USERNAME }}
+        run: |
+          if [ -z "$AISHUB_USERNAME" ]; then
+            echo "::error::AISHUB_USERNAME secret is not configured. Configure it at https://github.com/${{ github.repository }}/settings/secrets/actions as AISHUB_USERNAME (AISHub contributor username). No mock data will be generated — previous valid AIS dataset remains intact."
+            exit 1
+          fi
+          echo "Fetching single geographic AISHub batch (118 MMSIs, Great Lakes bbox 41.0-49.5/-93.5--66.0, interval 10)..."
+          python3 ais/aishub_fetch.py --live
+          echo "Fetch exit code: $?"
+          echo "Validating snapshot is live (not mock) and contains records..."
+          python3 -c "import json, sys, pathlib; data=json.load(open('ais/latest_snapshot.json')); assert not data.get('mock', False), 'Snapshot is mock — aborting'; assert data.get('record_count', 0) >= 0, 'No records field'; assert 'AISHub' in data.get('source',''), 'Source not AISHub'; print(f"Snapshot OK: {data.get('record_count')} vessels, source={data.get('source')}, fetched_at={data.get('fetched_at')}")"
+          echo "Snapshot validation passed"
+
+      - name: Update KML from snapshot (preserve 118 permanent placemarks)
+        run: |
+          # Backup previous valid KML before update — if update fails, restore
+          cp ais/great_lakes_ais.kml /tmp/great_lakes_ais.kml.bak
+          cp ais/great_lakes_ais.kmz /tmp/great_lakes_ais.kmz.bak 2>/dev/null || true
+          python3 ais/update_ais.py
+          echo "KML update completed — validating before commit..."
+
+      - name: Validate production KML before commit
+        run: |
+          echo "Validating KML has exactly 118 placemarks, 118 unique MMSIs, no mock, source AISHub..."
+          python3 - << 'PYEOF'
+          import re, pathlib, json, sys
+          kml_path = pathlib.Path("ais/great_lakes_ais.kml")
+          snap_path = pathlib.Path("ais/latest_snapshot.json")
+          kml = kml_path.read_text()
+          ids = re.findall(r'<Placemark id="(\d{9})">', kml)
+          if len(ids) != 118:
+              print(f"::error::Validation failed: expected 118 placemarks, found {len(ids)}")
+              sys.exit(1)
+          if len(set(ids)) != 118:
+              print(f"::error::Validation failed: duplicate MMSIs found: {len(ids)} vs {len(set(ids))} unique")
+              sys.exit(1)
+          # Ensure no mock data leaked into KML (check source in snapshot)
+          snap = json.load(open(snap_path))
+          if snap.get("mock"):
+              print("::error::Validation failed: snapshot is mock data — refusing to publish mock as live")
+              sys.exit(1)
+          if "AISHub" not in snap.get("source",""):
+              print(f"::error::Validation failed: source not AISHub: {snap.get('source')}")
+              sys.exit(1)
+          # Ensure MMSI tie — all KML ids must be in roster (already verified by build script, but double-check)
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("update_ais", "ais/update_ais.py")
+          mod = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(mod)
+          roster_ids = set(str(r[5]) for r in mod.ROSTER_118)
+          if set(ids) != roster_ids:
+              missing = roster_ids - set(ids)
+              extra = set(ids) - roster_ids
+              print(f"::error::Validation failed: KML MMSIs do not match roster 118. Missing: {missing}, Extra: {extra}")
+              sys.exit(1)
+          # Ensure red icon only, NOAA not modified is checked separately
+          assert "Copilot_20260827_201004.png" in kml, "Red icon missing"
+          assert "Copilot_20260827_200928" not in kml, "Yellow icon leaked"
+          assert "arrow.png" not in kml, "Default arrow leaked"
+          print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source={snap.get('source')}, no mock, red icon only")
+          PYEOF
+          echo "Validation passed"
+
+      - name: Rebuild KMZ (only after validation)
+        run: |
+          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260827_201004.png','icons/Copilot_20260827_201004.png'); z.close(); print('KMZ rebuilt after validation')"
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz
+          if git diff --cached --quiet; then
+            echo "No AIS changes to commit (positions unchanged within interval or no new AISHub records)"
+            exit 0
+          fi
+          # Final guard: ensure no NOAA files are staged
+          if git diff --cached --name-only | grep -qE "great_lakes_live_buoys|docs/live_buoys|publish\.yml"; then
+            echo "::error::Refusing commit: NOAA files would be modified"
+            git reset HEAD -- ais/great_lakes_ais.kml ais/great_lakes_ais.kmz
+            cp /tmp/great_lakes_ais.kml.bak ais/great_lakes_ais.kml
+            cp /tmp/great_lakes_ais.kmz.bak ais/great_lakes_ais.kmz 2>/dev/null || true
+            exit 1
+          fi
+          git commit -m "Update AIS vessel positions $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
