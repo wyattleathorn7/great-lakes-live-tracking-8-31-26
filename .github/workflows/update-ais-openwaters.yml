@@ -1,0 +1,136 @@
+name: Update AIS vessel positions (Open Waters — secondary)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-ais-openwaters
+  cancel-in-progress: true
+
+jobs:
+  update-ais-openwaters:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install websockets
+
+      - name: Fetch Open Waters (one WebSocket, Great Lakes bbox, roster filter 118)
+        env:
+          OPENWATERS_TOKEN: ${{ secrets.OPENWATERS_TOKEN }}
+        run: |
+          if [ -z "$OPENWATERS_TOKEN" ]; then
+            echo "::error::OPENWATERS_TOKEN secret is not configured. Configure it at https://github.com/${{ github.repository }}/settings/secrets/actions as OPENWATERS_TOKEN (Open Waters personal token). No mock data will be generated — previous valid AIS dataset remains intact."
+            exit 1
+          fi
+          echo "Fetching Open Waters — one WebSocket bbox 41.0,-93.5,49.5,-66.0 (233.75 sq° <400) + roster filter 118 (no 118 individual MMSI subscriptions) ..."
+          echo "token present: YES"
+          # Backup previous valid KML/KMZ before any overwrite — preserve on failure
+          cp ais/great_lakes_ais.kml /tmp/great_lakes_ais.kml.bak
+          cp ais/great_lakes_ais.kmz /tmp/great_lakes_ais.kmz.bak 2>/dev/null || true
+          # Run Open Waters fetch for 75 sec (one WebSocket, 7-sec KML flush, snapshot recovery only)
+          python3 ais/openwaters_fetch.py --duration 75
+          echo "Fetch exit code: $?"
+          # If fetch failed to produce valid update, restore previous valid dataset
+          if [ $? -ne 0 ]; then
+            echo "::warning::Open Waters fetch did not produce valid update — preserving previous valid AIS dataset (fail-safe, AISHub remains primary)"
+            cp /tmp/great_lakes_ais.kml.bak ais/great_lakes_ais.kml
+            cp /tmp/great_lakes_ais.kmz.bak ais/great_lakes_ais.kmz 2>/dev/null || true
+            exit 0
+          fi
+
+      - name: Validate Open Waters KML before commit (118 permanent placemarks, Open Waters source)
+        run: |
+          echo "Validating KML has exactly 118 placemarks, 118 unique MMSIs, source Open Waters, no 511 heading ..."
+          python3 - << 'PYEOF'
+          import re, pathlib, sys, xml.etree.ElementTree as ET
+          kml_path = pathlib.Path("ais/great_lakes_ais.kml")
+          kml = kml_path.read_text()
+          ids = re.findall(r'<Placemark id="(\d{9})">', kml)
+          if len(ids) != 118:
+              print(f"::error::Validation failed: expected 118 placemarks, found {len(ids)}")
+              sys.exit(1)
+          if len(set(ids)) != 118:
+              print(f"::error::Validation failed: duplicate MMSIs: {len(ids)} vs {len(set(ids))} unique")
+              sys.exit(1)
+          # MMSI must match roster
+          import importlib.util, json
+          roster = json.load(open("ais/roster_118.json"))
+          roster_ids = set(str(r["mmsi"]) for r in roster)
+          if set(ids) != roster_ids:
+              missing = roster_ids - set(ids)
+              extra = set(ids) - roster_ids
+              print(f"::error::Validation failed: KML MMSIs do not match roster 118. Missing: {missing}, Extra: {extra}")
+              sys.exit(1)
+          # Source must be Open Waters (not falsely AISHub)
+          if "Open Waters" not in kml:
+              print(f"::error::Validation failed: KML does not identify Open Waters as source when Open Waters was used")
+              sys.exit(1)
+          if "ais.openwaters.io" not in kml:
+              print(f"::error::Validation failed: KML missing ais.openwaters.io attribution")
+              sys.exit(1)
+          # No invalid heading 511
+          headings = re.findall(r'<heading>(\d+)</heading>', kml)
+          if any(int(h) == 511 for h in headings):
+              print(f"::error::Validation failed: invalid heading 511 found in KML")
+              sys.exit(1)
+          # No token leakage
+          if "ak1" in kml:
+              print(f"::error::Validation failed: token value leaked into KML")
+              sys.exit(1)
+          if "Bearer" in kml:
+              print(f"::error::Validation failed: Bearer credential leaked into KML")
+              sys.exit(1)
+          # XML valid, red icon only
+          try:
+              ET.fromstring(kml.encode())
+          except Exception as e:
+              print(f"::error::Validation failed: XML invalid: {e}")
+              sys.exit(1)
+          assert "Copilot_20260827_201004.png" in kml, "Red icon missing"
+          assert "Copilot_20260827_200928" not in kml, "Yellow icon leaked"
+          assert "arrow.png" not in kml, "Default arrow leaked"
+          print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source Open Waters, no 511, no token, red icon only, XML valid")
+          PYEOF
+          echo "Validation passed"
+
+      - name: Rebuild KMZ (only after validation)
+        run: |
+          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260827_201004.png','icons/Copilot_20260827_201004.png'); z.close(); print('KMZ rebuilt after Open Waters validation')"
+
+      - name: Commit and push if changed (preserve AISHub independence)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz
+          if git diff --cached --quiet; then
+            echo "No AIS changes to commit (Open Waters positions unchanged within window)"
+            exit 0
+          fi
+          # Guard: ensure no NOAA files staged
+          if git diff --cached --name-only | grep -qE "great_lakes_live_buoys|docs/live_buoys|publish\.yml"; then
+            echo "::error::Refusing commit: NOAA files would be modified (fail-safe)"
+            git reset HEAD -- ais/great_lakes_ais.kml ais/great_lakes_ais.kmz
+            cp /tmp/great_lakes_ais.kml.bak ais/great_lakes_ais.kml
+            cp /tmp/great_lakes_ais.kmz.bak ais/great_lakes_ais.kmz 2>/dev/null || true
+            exit 1
+          fi
+          # Guard: ensure workflow itself not leaked token
+          if git diff --cached | grep -q "ak1"; then
+            echo "::error::Refusing commit: token leaked into diff"
+            exit 1
+          fi
+          git commit -m "Update AIS vessel positions (Open Waters) $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
