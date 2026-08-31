@@ -1,9 +1,9 @@
-name: Update AIS vessel positions
+name: Update AIS vessel positions (AISHub — disabled, historical)
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
+  # schedule disabled — Open Waters is now sole live AIS updater (2026-08-31)
+  # cron: "*/5 * * * *" removed to prevent AISHub fallback; history preserved
 
 permissions:
   contents: write
