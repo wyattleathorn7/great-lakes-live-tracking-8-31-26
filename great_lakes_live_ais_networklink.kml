@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+  <name>Great Lakes Live AIS — NetworkLink (One-Time Import)</name>
+  <description><![CDATA[One-time Google Earth NetworkLink for live Great Lakes AIS (118 vessels).<br/>Import this file once into Google Earth Web/app. It will automatically refresh the live AIS KML every 5 minutes.<br/>Live KML: https://wyattleathorn7.github.io/great-lakes-live-tracking-8-31-26/great_lakes_ais.kml<br/>You do NOT need to download a new KMZ every 5 minutes.<br/>Source: Open Waters (ais.openwaters.io)]]></description>
+  <NetworkLink>
+    <name>Great Lakes Live AIS — 118 Vessels (Auto-Refresh)</name>
+    <visibility>1</visibility>
+    <open>1</open>
+    <Link>
+      <href>https://wyattleathorn7.github.io/great-lakes-live-tracking-8-31-26/great_lakes_ais.kml</href>
+      <refreshMode>onInterval</refreshMode>
+      <refreshInterval>300</refreshInterval>
+      <viewRefreshMode>never</viewRefreshMode>
+    </Link>
+  </NetworkLink>
+</Document>
+</kml>
