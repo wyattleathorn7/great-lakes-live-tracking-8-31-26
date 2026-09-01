@@ -101,16 +101,52 @@ jobs:
           except Exception as e:
               print(f"::error::Validation failed: XML invalid: {e}")
               sys.exit(1)
-          assert "Copilot_20260827_201004.png" in kml, "Red icon missing"
+          assert "Copilot_20260831_192510.png" in kml, "Red live icon missing"
+          assert "Copilot_20260831_193342.png" not in kml, "White offline icon should not be referenced"
           assert "Copilot_20260827_200928" not in kml, "Yellow icon leaked"
+          assert "Copilot_20260827_201004.png" not in kml, "Old red icon should not be referenced"
           assert "arrow.png" not in kml, "Default arrow leaked"
-          print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source Open Waters, no 511, no token, red icon only, XML valid")
+          assert kml.count("Copilot_20260831_192510.png") >= 1, "Red icon not referenced"
+          # Offline vessels are intentionally hidden with visibility 0 (original correct behavior)
+          assert "<visibility>0</visibility>" in kml, "Offline vessels should be hidden with visibility 0"
+          print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source Open Waters, no 511, no token, red live 192510 only, offline hidden, XML valid")
           PYEOF
           echo "Validation passed"
 
       - name: Rebuild KMZ (only after validation)
         run: |
-          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260827_201004.png','icons/Copilot_20260827_201004.png'); z.close(); print('KMZ rebuilt after Open Waters validation')"
+          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260831_192510.png','icons/Copilot_20260831_192510.png'); z.close(); print('KMZ rebuilt with red icon 192510 only after Open Waters validation')"
+
+      - name: Deploy live KML and red icon to GitHub Pages (NetworkLink stable endpoint)
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Stable URLs for Google Earth:
+          # Live KML: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/great_lakes_ais.kml
+          # Red icon: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/icons/Copilot_20260831_192510.png
+          # NetworkLink: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/great_lakes_live_ais_networklink.kml
+          # Only live KML + icon + NetworkLink are published — not the private repo
+          echo "Deploying live AIS KML + red icon + NetworkLink to gh-pages"
+          rm -rf /tmp/pages-deploy-ais
+          mkdir -p /tmp/pages-deploy-ais/icons
+          cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/great_lakes_ais.kml
+          cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/icons/Copilot_20260831_192510.png
+          if [ -f great_lakes_live_ais_networklink.kml ]; then
+            cp great_lakes_live_ais_networklink.kml /tmp/pages-deploy-ais/great_lakes_live_ais_networklink.kml
+          fi
+          # Also copy live KML as ais/great_lakes_ais.kml for compatibility
+          mkdir -p /tmp/pages-deploy-ais/ais
+          cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/ais/great_lakes_ais.kml
+          mkdir -p /tmp/pages-deploy-ais/ais/icons
+          cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/ais/icons/Copilot_20260831_192510.png
+          cd /tmp/pages-deploy-ais
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy live AIS KML + red icon + NetworkLink $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "No Pages changes to commit"
+          git push --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" HEAD:gh-pages || echo "::warning::Pages deploy failed (may need Pages enabled)"
 
       - name: Commit and push if changed (preserve AISHub independence)
         run: |
