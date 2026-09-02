@@ -117,17 +117,16 @@ jobs:
         run: |
           python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260831_192510.png','icons/Copilot_20260831_192510.png'); z.close(); print('KMZ rebuilt with red icon 192510 only after Open Waters validation')"
 
-      - name: Deploy live KML and red icon to GitHub Pages (NetworkLink stable endpoint)
+      - name: Deploy live KML and red icon to public delivery (stable NetworkLink endpoint)
         env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
+          TOKEN: ${{ secrets.DELIVERY_TOKEN }}
         run: |
-          # Stable URLs for Google Earth:
-          # Live KML: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/great_lakes_ais.kml
-          # Red icon: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/icons/Copilot_20260831_192510.png
-          # NetworkLink: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/great_lakes_live_ais_networklink.kml
-          # Only live KML + icon + NetworkLink are published — not the private repo
-          echo "Deploying live AIS KML + red icon + NetworkLink to gh-pages"
+          # Stable public URLs for Google Earth (public delivery repo, not private):
+          # Live KML: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/great_lakes_ais.kml
+          # Red icon: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/icons/Copilot_20260831_192510.png
+          # NetworkLink: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/great_lakes_live_ais_networklink.kml
+          # Private repo remains private — only live KML + icon + NetworkLink are published to public delivery repo
+          echo "Deploying live AIS KML + red icon + NetworkLink to public delivery repo wyattleathorn7/great-lakes-live-ais-delivery"
           rm -rf /tmp/pages-deploy-ais
           mkdir -p /tmp/pages-deploy-ais/icons
           cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/great_lakes_ais.kml
@@ -140,13 +139,15 @@ jobs:
           cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/ais/great_lakes_ais.kml
           mkdir -p /tmp/pages-deploy-ais/ais/icons
           cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/ais/icons/Copilot_20260831_192510.png
+          # Preserve README if exists in public repo
+          curl -s https://raw.githubusercontent.com/wyattleathorn7/great-lakes-live-ais-delivery/main/README.md 2>/dev/null | head -5 | grep -q "Public delivery" && curl -s https://raw.githubusercontent.com/wyattleathorn7/great-lakes-live-ais-delivery/main/README.md > /tmp/pages-deploy-ais/README.md || echo "# Great Lakes Live AIS — Public Delivery" > /tmp/pages-deploy-ais/README.md
           cd /tmp/pages-deploy-ais
           git init -q
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -q -m "Deploy live AIS KML + red icon + NetworkLink $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "No Pages changes to commit"
-          git push --force "https://x-access-token:${TOKEN}@github.com/${REPO}.git" HEAD:gh-pages || echo "::warning::Pages deploy failed (may need Pages enabled)"
+          git commit -q -m "Deploy live AIS KML + red icon + NetworkLink $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "No delivery changes to commit"
+          git push --force "https://x-access-token:${TOKEN}@github.com/wyattleathorn7/great-lakes-live-ais-delivery.git" HEAD:main || echo "::warning::Public delivery deploy failed"
 
       - name: Commit and push if changed (preserve AISHub independence)
         run: |
