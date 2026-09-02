@@ -103,8 +103,8 @@ def build_kml():
     kml_lines.append('  <name>Great Lakes Commercial &amp; Operational Ships — AIS Live (Open Waters — 118)</name>')
     fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     kml_lines.append(f'  <description><![CDATA[Production AIS vessel layer — 118 permanent placemarks (MMSI primary key, never name-matched).<br/>Source: {ATTRIBUTION}<br/>BBOX {BBOX_CSV} | Fetched {html.escape(fetched_at)} | One WebSocket bbox + roster filter 118, no individual MMSI subscriptions<br/>MMSI→placemark never changes, heading via &lt;IconStyle&gt;&lt;heading&gt; (HEADING 511 unavailable → COG fallback labelled), offline retained visibility 0.<br/>118/118 High, ceiling 180 not approached. Not for navigation.]]></description>')
-    kml_lines.append('  <Style id="vesselActive"><IconStyle><scale>0.8</scale><Icon><href>icons/Copilot_20260831_1925101.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle><BalloonStyle><text><![CDATA[$[description]]]></text></BalloonStyle></Style>')
-    kml_lines.append('  <Style id="vesselOffline"><IconStyle><color>ff808080</color><scale>0.7</scale><Icon><href>icons/Copilot_20260831_1925101.png</href></Icon></IconStyle><LabelStyle><scale>0.6</scale></LabelStyle></Style>')
+    kml_lines.append('  <Style id="vesselActive"><IconStyle><scale>0.8</scale><Icon><href>icons/Copilot_20260831_192510.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle><BalloonStyle><text><![CDATA[$[description]]]></text></BalloonStyle></Style>')
+    kml_lines.append('  <Style id="vesselOffline"><IconStyle><color>ff808080</color><scale>0.7</scale><Icon><href>icons/Copilot_20260831_192510.png</href></Icon></IconStyle><LabelStyle><scale>0.6</scale></LabelStyle></Style>')
     for mmsi in sorted(roster_mmsi_set):
         entry = roster_mmsi_map[mmsi]
         # entry from JSON: dict with vessel, operator, type, imo, mmsi, call, flag, length, code
@@ -146,7 +146,7 @@ def build_kml():
             extended = f'<ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="heading"><value>{s.heading if s.heading is not None else ""}</value></Data><Data name="cog"><value>{s.cog if s.cog is not None else ""}</value></Data><Data name="sog"><value>{s.sog if s.sog is not None else ""}</value></Data><Data name="ais_time"><value>{html.escape(str(s.seen))}</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data><Data name="callsign"><value>{html.escape(call)}</value></Data></ExtendedData>'
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)}</name><styleUrl>#vesselActive</styleUrl>')
             if icon_h is not None:
-                kml_lines.append(f'    <Style><IconStyle><heading>{icon_h}</heading><Icon><href>icons/Copilot_20260831_1925101.png</href></Icon></IconStyle></Style>')
+                kml_lines.append(f'    <Style><IconStyle><heading>{icon_h}</heading><Icon><href>icons/Copilot_20260831_192510.png</href></Icon></IconStyle></Style>')
             kml_lines.append(f'    <description>{desc}</description>')
             kml_lines.append(f'    <Point><coordinates>{s.lon:.5f},{s.lat:.5f},0</coordinates></Point>')
             kml_lines.append(f'    {extended}')

@@ -101,21 +101,21 @@ jobs:
           except Exception as e:
               print(f"::error::Validation failed: XML invalid: {e}")
               sys.exit(1)
-          assert "Copilot_20260831_1925101.png" in kml, "New red icon 1925101 missing"
-          assert "Copilot_20260831_192510.png" not in kml, "Old 192510 should not be referenced (cache-bust uses 1925101)"
+          assert "Copilot_20260831_192510.png" in kml, "Red live icon 192510 missing (known-good)"
+          assert "Copilot_20260831_1925101.png" not in kml, "Cache-bust 1925101 should not be active (restore known-good 192510)"
           assert "Copilot_20260831_193342.png" not in kml, "White offline icon should not be referenced"
           assert "Copilot_20260827_200928" not in kml, "Yellow icon leaked"
           assert "arrow.png" not in kml, "Default arrow leaked"
-          assert kml.count("Copilot_20260831_1925101.png") >= 1, "New icon 1925101 not referenced"
+          assert kml.count("Copilot_20260831_192510.png") >= 1, "Red icon 192510 not referenced"
           # Offline vessels are intentionally hidden with visibility 0 (original correct behavior)
           assert "<visibility>0</visibility>" in kml, "Offline vessels should be hidden with visibility 0"
-          print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source Open Waters, no 511, no token, new red 1925101 cache-bust, offline hidden, XML valid")
+          print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source Open Waters, no 511, no token, red 192510 restored known-good, offline hidden, XML valid")
           PYEOF
           echo "Validation passed"
 
       - name: Rebuild KMZ (only after validation)
         run: |
-          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260831_1925101.png','icons/Copilot_20260831_1925101.png'); z.close(); print('KMZ rebuilt with new icon 1925101 cache-bust after Open Waters validation')"
+          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260831_192510.png','icons/Copilot_20260831_192510.png'); z.close(); print('KMZ rebuilt with red icon 192510 (known-good) after Open Waters validation')"
 
       - name: Deploy live KML and red icon to public delivery (stable NetworkLink endpoint)
         env:
@@ -123,14 +123,14 @@ jobs:
         run: |
           # Stable public URLs for Google Earth (public delivery repo, not private):
           # Live KML: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/great_lakes_ais.kml
-          # Red icon (cache-bust): https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/icons/Copilot_20260831_1925101.png
+          # Red icon (known-good): https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/icons/Copilot_20260831_192510.png
           # NetworkLink: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/great_lakes_live_ais_networklink.kml
           # Private repo remains private — only live KML + icon + NetworkLink are published to public delivery repo
-          echo "Deploying live AIS KML + red icon (1925101 cache-bust) + NetworkLink to public delivery repo wyattleathorn7/great-lakes-live-ais-delivery"
+          echo "Deploying live AIS KML + red icon (192510 known-good) + NetworkLink to public delivery repo wyattleathorn7/great-lakes-live-ais-delivery"
           rm -rf /tmp/pages-deploy-ais
           mkdir -p /tmp/pages-deploy-ais/icons
           cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/great_lakes_ais.kml
-          cp ais/icons/Copilot_20260831_1925101.png /tmp/pages-deploy-ais/icons/Copilot_20260831_1925101.png
+          cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/icons/Copilot_20260831_192510.png
           if [ -f great_lakes_live_ais_networklink.kml ]; then
             cp great_lakes_live_ais_networklink.kml /tmp/pages-deploy-ais/great_lakes_live_ais_networklink.kml
           fi
@@ -138,7 +138,7 @@ jobs:
           mkdir -p /tmp/pages-deploy-ais/ais
           cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/ais/great_lakes_ais.kml
           mkdir -p /tmp/pages-deploy-ais/ais/icons
-          cp ais/icons/Copilot_20260831_1925101.png /tmp/pages-deploy-ais/ais/icons/Copilot_20260831_1925101.png
+          cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/ais/icons/Copilot_20260831_192510.png
           # Preserve README if exists in public repo
           curl -s https://raw.githubusercontent.com/wyattleathorn7/great-lakes-live-ais-delivery/main/README.md 2>/dev/null | head -5 | grep -q "Public delivery" && curl -s https://raw.githubusercontent.com/wyattleathorn7/great-lakes-live-ais-delivery/main/README.md > /tmp/pages-deploy-ais/README.md || echo "# Great Lakes Live AIS — Public Delivery" > /tmp/pages-deploy-ais/README.md
           cd /tmp/pages-deploy-ais
