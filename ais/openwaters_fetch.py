@@ -193,14 +193,17 @@ def build_kml():
     return "\n".join(kml_lines)
 
 async def snapshot_recovery():
-    # NOTE: the vessels bbox endpoint requires a personal token
-    # (anonymous bbox returns HTTP 400 "bbox not allowed for this key"),
-    # so the key must be sent here — not just on the WebSocket.
+    # NOTE: this key rejects bbox snapshot queries
+    # (HTTP 400 "bbox not allowed for this key" even authenticated), so query
+    # by our 118 roster MMSIs instead — the API accepts mmsi where it rejects
+    # bbox ("bbox or mmsi required for this key"). One GET covers all 118.
     token = os.environ.get("OPENWATERS_TOKEN", "")
-    snapshot_url = SNAPSHOT_URL + ("?key=" + token if token else "")
-    print(f"Snapshot recovery: GET {SNAPSHOT_URL} ({'authenticated' if token else 'anonymous'} — token present: {'YES' if token else 'NO'})")
+    mmsi_csv = ",".join(sorted(roster_mmsi_set))
+    snapshot_url = (f"https://ais.openwaters.io/v1/vessels?mmsi={mmsi_csv}"
+                    + ("&key=" + token if token else ""))
+    print(f"Snapshot recovery: GET vessels?mmsi=(118 roster MMSIs) ({'authenticated' if token else 'anonymous'} — token present: {'YES' if token else 'NO'})")
     if not token:
-        print("Snapshot skipped: OPENWATERS_TOKEN not set, anonymous bbox is rejected (HTTP 400) — WebSocket will be the data source")
+        print("Snapshot skipped: OPENWATERS_TOKEN not set — WebSocket will be the data source")
         return 0
     try:
         req = urllib.request.Request(snapshot_url, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
