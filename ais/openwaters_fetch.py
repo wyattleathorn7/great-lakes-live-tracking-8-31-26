@@ -207,7 +207,9 @@ def build_kml():
             kml_lines.append(f'    {extended}')
             kml_lines.append(f'  </Placemark>')
         else:
-            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no live record from {("Open Waters / AISStream") if AISSTREAM_ENABLED else "Open Waters"} within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Sources checked: {("Open Waters + AISStream") if AISSTREAM_ENABLED else "Open Waters"}<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
+            off_window = "Open Waters / AISStream" if AISSTREAM_ENABLED else "Open Waters"
+            off_srcs = "Open Waters + AISStream" if AISSTREAM_ENABLED else "Open Waters"
+            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no live record from {off_window} within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Sources checked: {off_srcs}<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)} (offline)</name><styleUrl>#vesselOffline</styleUrl><description>{desc_off}</description><Point><coordinates>0,0,0</coordinates></Point><visibility>0</visibility><ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="status"><value>No current position</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data></ExtendedData></Placemark>')
     kml_lines.append('</Document></kml>')
     return "\n".join(kml_lines)
