@@ -32,6 +32,7 @@ jobs:
       - name: Fetch Open Waters (one WebSocket, Great Lakes bbox, roster filter 118)
         env:
           OPENWATERS_TOKEN: ${{ secrets.OPENWATERS_TOKEN }}
+          AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}
         run: |
           if [ -z "$OPENWATERS_TOKEN" ]; then
             echo "::error::OPENWATERS_TOKEN secret is not configured. Configure it at https://github.com/${{ github.repository }}/settings/secrets/actions as OPENWATERS_TOKEN (Open Waters personal token). No mock data will be generated — previous valid AIS dataset remains intact."

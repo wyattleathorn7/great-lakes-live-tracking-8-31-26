@@ -5,6 +5,10 @@ Open Waters Secondary AIS Fetch — Production (private repo only)
 - ONE WebSocket: wss://ais.openwaters.io/v1/stream?key=<OPENWATERS_TOKEN>
 - Great Lakes bbox 41.0,-93.5,49.5,-66.0 = 233.75 sq° (personal 400 sufficient, anonymous 100 insufficient)
 - Client-side MMSI filtering against ais/roster_118.json (118 vessels) — no 118 individual subscriptions
+- Optional AISStream secondary (free, AISSTREAM_API_KEY secret): same 118 MMSI
+  filter over 3 Great Lakes boxes, merged into the same vessel state. A vessel
+  seen by EITHER source counts as live; each placemark labels its source.
+  Runs Open-Waters-only when the key is unset.
 - In-memory 118 VesselState, KML flush throttled 7 sec, atomic tmp->replace, validation 118 unique
 - Heading: 511 unavailable → COG fallback, never writes 511, 0→360
 - Offline: retain placemark visibility 0, no deletion/estimation/substitution, 30-min staleness
@@ -42,6 +46,21 @@ BBOX_CSV = "41.0,-93.5,49.5,-66.0"
 
 ATTRIBUTION = "Source: Open Waters (ais.openwaters.io) — Volunteer + open feeds (Kystverket, Digitraffic, AISHub, AIS-catcher). Data may be delayed/incomplete/inaccurate. Not for navigation."
 DISCLAIMER = "AIS data can be delayed, incomplete, or inaccurate and is not for navigation. Positions via Open Waters aggregated network."
+
+# --- AISStream secondary source (free, opt-in via AISSTREAM_API_KEY secret) ---
+# Same Great Lakes coverage as BBOX above, split into 3 corner-pair boxes.
+# Roster (118) fits AISStream's 200-MMSI filter. Runs merged into the same
+# VesselState: a vessel seen by EITHER source counts as live, and each
+# placemark labels the source that last reported it.
+AISSTREAM_URI = "wss://stream.aisstream.io/v0/stream"
+AISSTREAM_BOXES = [
+    [[41.0, -93.5], [49.0, -83.5]],   # Superior + Michigan + western Huron
+    [[41.0, -84.5], [46.5, -76.0]],   # Huron + Erie + Ontario
+    [[43.5, -77.5], [49.5, -66.0]],   # eastern Ontario + St. Lawrence
+]
+AISSTREAM_TAG = "AISStream"
+AISSTREAM_ATTRIBUTION = "Secondary live source: AISStream (aisstream.io) — free community feed."
+AISSTREAM_ENABLED = bool(os.environ.get("AISSTREAM_API_KEY"))
 
 roster = json.load(open(ROSTER_PATH))
 roster_mmsi_set = set(str(r["mmsi"]) for r in roster)
@@ -134,7 +153,7 @@ def build_kml():
     kml_lines.append('<kml xmlns="http://www.opengis.net/kml/2.2"><Document>')
     kml_lines.append('  <name>Great Lakes Commercial &amp; Operational Ships — AIS Live (Open Waters — 118)</name>')
     fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    kml_lines.append(f'  <description><![CDATA[Production AIS vessel layer — 118 permanent placemarks (MMSI primary key, never name-matched).<br/>Source: {ATTRIBUTION}<br/>BBOX {BBOX_CSV} | Fetched {html.escape(fetched_at)} | One WebSocket bbox + roster filter 118, no individual MMSI subscriptions<br/>MMSI→placemark never changes, heading via &lt;IconStyle&gt;&lt;heading&gt; (HEADING 511 unavailable → COG fallback labelled), offline retained visibility 0.<br/>118/118 High, ceiling 180 not approached. Not for navigation.]]></description>')
+    kml_lines.append(f'  <description><![CDATA[Production AIS vessel layer — 118 permanent placemarks (MMSI primary key, never name-matched).<br/>Source: {ATTRIBUTION}<br/>BBOX {BBOX_CSV} | Fetched {html.escape(fetched_at)} | One WebSocket bbox + roster filter 118, no individual MMSI subscriptions<br/>MMSI→placemark never changes, heading via &lt;IconStyle&gt;&lt;heading&gt; (HEADING 511 unavailable → COG fallback labelled), offline retained visibility 0.<br/>118/118 High, ceiling 180 not approached. Not for navigation.{("<br/>" + AISSTREAM_ATTRIBUTION) if AISSTREAM_ENABLED else ""}]]></description>')
     kml_lines.append('  <Style id="vesselActive"><IconStyle><scale>1.1</scale><Icon><href>icons/Copilot_20260831_192510.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle><BalloonStyle><text><![CDATA[$[description]]]></text></BalloonStyle></Style>')
     kml_lines.append('  <Style id="vesselOffline"><IconStyle><color>ff808080</color><scale>0.7</scale><Icon><href>icons/Copilot_20260831_192510.png</href></Icon></IconStyle><LabelStyle><scale>0.6</scale></LabelStyle></Style>')
     # Human-friendly run timestamp (12-hour Great Lakes local + UTC ref).
@@ -155,6 +174,7 @@ def build_kml():
         flag = entry.get("flag", "")
         length = entry.get("length", "")
         if is_live:
+            src_label = "AISStream (aisstream.io)" if s.source == AISSTREAM_TAG else "Open Waters (ais.openwaters.io)"
             h_val = kml_heading(s.heading) if s.heading is not None else None
             cog_val = None
             try:
@@ -177,8 +197,8 @@ def build_kml():
             # sanitize heading for display: never show 511
             if s.heading == 511 or str(s.heading) == "511":
                 heading_str = "not available (COG fallback)"
-            desc = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>Type: {html.escape(vtype)}<br/>MMSI: {mmsi} | IMO: {imo} | Call: {html.escape(call)} | Flag: {flag} | Length: {length}<br/>Position: {s.lat:.5f}, {s.lon:.5f}<br/>HEADING: {heading_str} (source: {heading_src}) | COG: {cog_str} | SOG: {sog_str}<br/>AIS TIME: {html.escape(friendly_utc_stamp(s.seen))} | Fetched: {html.escape(fetched_friendly)}<br/>Source: Open Waters — attribution preserved<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
-            extended = f'<ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="heading"><value>{s.heading if s.heading is not None else ""}</value></Data><Data name="cog"><value>{s.cog if s.cog is not None else ""}</value></Data><Data name="sog"><value>{s.sog if s.sog is not None else ""}</value></Data><Data name="ais_time"><value>{html.escape(str(s.seen))}</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data><Data name="callsign"><value>{html.escape(call)}</value></Data></ExtendedData>'
+            desc = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>Type: {html.escape(vtype)}<br/>MMSI: {mmsi} | IMO: {imo} | Call: {html.escape(call)} | Flag: {flag} | Length: {length}<br/>Position: {s.lat:.5f}, {s.lon:.5f}<br/>HEADING: {heading_str} (source: {heading_src}) | COG: {cog_str} | SOG: {sog_str}<br/>AIS TIME: {html.escape(friendly_utc_stamp(s.seen))} | Fetched: {html.escape(fetched_friendly)}<br/>Source: {src_label} — attribution preserved<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
+            extended = f'<ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="heading"><value>{s.heading if s.heading is not None else ""}</value></Data><Data name="cog"><value>{s.cog if s.cog is not None else ""}</value></Data><Data name="sog"><value>{s.sog if s.sog is not None else ""}</value></Data><Data name="ais_time"><value>{html.escape(str(s.seen))}</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>{src_label}</value></Data><Data name="callsign"><value>{html.escape(call)}</value></Data></ExtendedData>'
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)}</name><styleUrl>#vesselActive</styleUrl>')
             if icon_h is not None:
                 kml_lines.append(f'    <Style><IconStyle><heading>{icon_h}</heading><Icon><href>icons/Copilot_20260831_192510.png</href></Icon></IconStyle></Style>')
@@ -187,7 +207,7 @@ def build_kml():
             kml_lines.append(f'    {extended}')
             kml_lines.append(f'  </Placemark>')
         else:
-            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no Open Waters record within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Source: Open Waters<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
+            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no live record from {("Open Waters / AISStream") if AISSTREAM_ENABLED else "Open Waters"} within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Sources checked: {("Open Waters + AISStream") if AISSTREAM_ENABLED else "Open Waters"}<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)} (offline)</name><styleUrl>#vesselOffline</styleUrl><description>{desc_off}</description><Point><coordinates>0,0,0</coordinates></Point><visibility>0</visibility><ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="status"><value>No current position</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data></ExtendedData></Placemark>')
     kml_lines.append('</Document></kml>')
     return "\n".join(kml_lines)
@@ -376,6 +396,105 @@ async def websocket_loop(duration):
             break
     return True
 
+def _aisstream_time(meta):
+    """Normalize an AISStream MetaData timestamp to ISO UTC (never blank)."""
+    for k in ("time_utc", "TimeUTC", "timestamp", "Timestamp"):
+        v = meta.get(k)
+        if not v:
+            continue
+        try:
+            dt = datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            continue
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+async def aisstream_loop(duration):
+    """Secondary AISStream collector — merges into the same VesselState.
+
+    No-op (returns False) when AISSTREAM_API_KEY is unset, so the workflow
+    runs Open-Waters-only until the secret is configured. The key value is
+    never printed or written to the KML.
+    """
+    key = os.environ.get("AISSTREAM_API_KEY", "")
+    if not key:
+        print("AISStream secondary: AISSTREAM_API_KEY not set — Open Waters only")
+        print("aisstream present: NO")
+        return False
+    print("aisstream present: YES")
+    end_time = time_module.time() + (duration if duration > 0 else 86400)
+    backoff = 1
+    sub = {"APIKey": key, "BoundingBoxes": AISSTREAM_BOXES,
+           "FiltersShipMMSI": sorted(roster_mmsi_set),
+           "FilterMessageTypes": ["PositionReport"]}
+    while time_module.time() < end_time:
+        try:
+            print("AISStream secondary: connecting wss://stream.aisstream.io/v0/stream — aisstream present: YES")
+            async with websockets.connect(AISSTREAM_URI, ping_interval=20, ping_timeout=10, max_queue=2048) as ws:
+                await ws.send(json.dumps(sub))
+                backoff = 1
+                async for msg in ws:
+                    if time_module.time() >= end_time:
+                        break
+                    try:
+                        text = msg if isinstance(msg, str) else msg.decode("utf-8", "replace")
+                        data = json.loads(text)
+                    except Exception:
+                        continue
+                    if data.get("MessageType") == "SubscriptionConfirmation":
+                        print("AISStream secondary: subscription confirmed")
+                        continue
+                    if data.get("MessageType") != "PositionReport":
+                        continue
+                    meta = data.get("MetaData", {}) or {}
+                    mmsi = str(meta.get("MMSI", ""))
+                    if mmsi not in roster_mmsi_set:
+                        stats["unrostered_discarded"] += 1
+                        continue
+                    pr = (data.get("Message", {}) or {}).get("PositionReport", {}) or {}
+                    lat = meta.get("Latitude", pr.get("Latitude"))
+                    lon = meta.get("Longitude", pr.get("Longitude"))
+                    if lat is None or lon is None:
+                        continue
+                    s = state[mmsi]
+                    if s.lat != lat or s.lon != lon:
+                        stats["position_changes"] += 1
+                    s.lat, s.lon = lat, lon
+                    sog = pr.get("Sog")
+                    cog = pr.get("Cog")
+                    hd = pr.get("TrueHeading")
+                    if sog is not None and sog != 102.3:
+                        s.sog = sog
+                    if cog is not None and cog != 360:
+                        s.cog = cog
+                    if hd is not None and hd != 511:
+                        s.heading = hd
+                    s.source = AISSTREAM_TAG
+                    s.seen = _aisstream_time(meta)
+                    s.last_update = time_module.time()
+                    s.status = "live"
+                    s.dirty = True
+                    stats["roster_matched"] += 1
+                    stats["aisstream_matched"] += 1
+                    if stats["aisstream_matched"] <= 3 or stats["aisstream_matched"] % 25 == 0:
+                        print(f"AISStream match {stats['aisstream_matched']}: MMSI {mmsi} {lat},{lon} at {s.seen}")
+                    if time_module.time() >= end_time:
+                        break
+        except Exception as e:
+            print(f"AISStream secondary error: {type(e).__name__} — backoff {backoff}s")
+            if time_module.time() >= end_time:
+                break
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 30)
+            stats["reconnects"] += 1
+            if time_module.time() >= end_time:
+                break
+        if time_module.time() >= end_time:
+            break
+    return True
+
 async def kml_writer(duration):
     # Run for duration + small buffer, flushing every 7 sec
     start = time_module.time()
@@ -431,7 +550,7 @@ async def main():
     if args.snapshot_only:
         duration = 0
     print(f"=== Open Waters AIS fetch starting — bbox {BBOX} area 233.75 sq° (personal 400) rosters 118 ===")
-    print(f"Duration: {duration}s, roster 118, snapshot recovery enabled, token present: {'YES' if os.environ.get('OPENWATERS_TOKEN') else 'NO'}")
+    print(f"Duration: {duration}s, roster 118, snapshot recovery enabled, token present: {'YES' if os.environ.get('OPENWATERS_TOKEN') else 'NO'}, aisstream present: {'YES' if os.environ.get('AISSTREAM_API_KEY') else 'NO'}")
     # Backup existing valid KML before any overwrite
     backup = None
     if OUTPUT_KML.exists():
@@ -474,23 +593,23 @@ async def main():
         # Preserve existing KML: do not overwrite with empty snapshot
         print("Preserving existing valid KML due to missing token")
         sys.exit(2)
-    # Start concurrent tasks: websocket loop and kml writer
+    # Start concurrent tasks: Open Waters loop, AISStream secondary (if key
+    # set — otherwise it exits immediately), and kml writer
     writer_task = asyncio.create_task(kml_writer(duration))
     ws_task = asyncio.create_task(websocket_loop(duration))
+    ais_task = asyncio.create_task(aisstream_loop(duration))
+    tasks = [writer_task, ws_task, ais_task]
     try:
-        await asyncio.wait_for(asyncio.gather(writer_task, ws_task), timeout=duration + 30)
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=duration + 30)
     except asyncio.TimeoutError:
         print(f"{duration}s collection timeout, finalizing")
-        writer_task.cancel()
-        ws_task.cancel()
-        try:
-            await writer_task
-        except:
-            pass
-        try:
-            await ws_task
-        except:
-            pass
+        for t in tasks:
+            t.cancel()
+        for t in tasks:
+            try:
+                await t
+            except:
+                pass
     # Final KML flush if not yet done
     kml = build_kml()
     ids = re.findall(r'<Placemark id="(\d{9})">', kml)
@@ -526,6 +645,7 @@ async def main():
     print("\n=== FINAL REPORT ===")
     print(f"Reconnects: {stats['reconnects']}, events: {stats['events_received']}, roster_matched: {stats['roster_matched']}, unrostered: {stats['unrostered_discarded']}")
     print(f"Position changes: {stats['position_changes']}, KML flushes: {stats['kml_flushes']}, queue max: {stats['queue_depth_max']}, errors: {len(errors)}")
+    print(f"AISStream secondary matched: {stats['aisstream_matched']}")
     live = sum(1 for s in state.values() if s.status == "live" and s.lat is not None and (time_module.time() - s.last_update) < 1800)
     print(f"Vessel state: live {live}, offline {118-live}")
     print(f"Snapshot matched {snapshot_matched}/118 initial")
