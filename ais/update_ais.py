@@ -281,8 +281,8 @@ def main():
     out_kml="ais/great_lakes_ais.kml"
     pathlib.Path(out_kml).write_text(kml_content)
     print(f"Wrote KML {out_kml} — {len(ROSTER_118)} placemarks (live {live}, offline {offline})")
-    # Also write KMZ (zip KML + icon)
-    out_kmz="/var/folders/_7/cqm25grj5w95r1zwk6lw9mf80000gn/T/opencode/production_ais/great_lakes_ais.kmz"
+    # Also write KMZ (zip KML + icon) — repo-relative so it works in CI and locally
+    out_kmz = str(pathlib.Path(__file__).parent / "great_lakes_ais.kmz")
     with zipfile.ZipFile(out_kmz, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(out_kml, "great_lakes_ais.kml")
         z.write(ICON_SRC, "icons/Copilot_20260827_201004.png")

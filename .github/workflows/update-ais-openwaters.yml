@@ -43,11 +43,17 @@ jobs:
           cp ais/great_lakes_ais.kml /tmp/great_lakes_ais.kml.bak
           cp ais/great_lakes_ais.kmz /tmp/great_lakes_ais.kmz.bak 2>/dev/null || true
           # Run Open Waters fetch for 75 sec (one WebSocket, 7-sec KML flush, snapshot recovery only)
+          # NOTE: capture exit code immediately — a plain `echo $?` after would
+          # clobber it, and `set -e` would kill the step before the fail-safe
+          # restore below. `set +e` lets us handle fetch failure gracefully.
+          set +e
           python3 ais/openwaters_fetch.py --duration 75
-          echo "Fetch exit code: $?"
+          FETCH_EXIT=$?
+          set -e
+          echo "Fetch exit code: $FETCH_EXIT"
           # If fetch failed to produce valid update, restore previous valid dataset
-          if [ $? -ne 0 ]; then
-            echo "::warning::Open Waters fetch did not produce valid update — preserving previous valid AIS dataset (fail-safe, AISHub remains primary)"
+          if [ "$FETCH_EXIT" -ne 0 ]; then
+            echo "::warning::Open Waters fetch did not produce valid update (exit $FETCH_EXIT) — preserving previous valid AIS dataset (fail-safe, AISHub remains primary)"
             cp /tmp/great_lakes_ais.kml.bak ais/great_lakes_ais.kml
             cp /tmp/great_lakes_ais.kmz.bak ais/great_lakes_ais.kmz 2>/dev/null || true
             exit 0

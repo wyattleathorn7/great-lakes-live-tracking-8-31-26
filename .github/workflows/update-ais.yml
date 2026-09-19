@@ -35,8 +35,15 @@ jobs:
             exit 1
           fi
           echo "Fetching single geographic AISHub batch (118 MMSIs, Great Lakes bbox 41.0-49.5/-93.5--66.0, interval 10)..."
+          set +e
           python3 ais/aishub_fetch.py --live
-          echo "Fetch exit code: $?"
+          FETCH_EXIT=$?
+          set -e
+          echo "Fetch exit code: $FETCH_EXIT"
+          if [ "$FETCH_EXIT" -ne 0 ]; then
+            echo "::error::AISHub fetch failed (exit $FETCH_EXIT) — preserving previous valid AIS dataset"
+            exit "$FETCH_EXIT"
+          fi
           echo "Validating snapshot is live (not mock) and contains records..."
           python3 -c "import json, sys, pathlib; data=json.load(open('ais/latest_snapshot.json')); assert not data.get('mock', False), 'Snapshot is mock — aborting'; assert data.get('record_count', 0) >= 0, 'No records field'; assert 'AISHub' in data.get('source',''), 'Source not AISHub'; print(f"Snapshot OK: {data.get('record_count')} vessels, source={data.get('source')}, fetched_at={data.get('fetched_at')}")"
           echo "Snapshot validation passed"

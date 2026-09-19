@@ -9,7 +9,7 @@ Open Waters Secondary AIS Fetch — Production (private repo only)
 - Heading: 511 unavailable → COG fallback, never writes 511, 0→360
 - Offline: retain placemark visibility 0, no deletion/estimation/substitution, 30-min staleness
 - Reconnect: exponential backoff 1→60s + jitter, preserve state, snapshot recovery only for initial/reconnect
-- No mock fallback, no continuous poll, snapshot GET anonymous only
+- No mock fallback, no continuous poll, snapshot GET sends the personal token (anonymous bbox is rejected with HTTP 400)
 - Attribution: Source Open Waters (ais.openwaters.io) when actually used
 - Token never printed: only "token present: YES/NO"
 
@@ -158,9 +158,17 @@ def build_kml():
     return "\n".join(kml_lines)
 
 async def snapshot_recovery():
-    print(f"Snapshot recovery: GET {SNAPSHOT_URL} (anonymous, initial/recovery only)")
+    # NOTE: the vessels bbox endpoint requires a personal token
+    # (anonymous bbox returns HTTP 400 "bbox not allowed for this key"),
+    # so the key must be sent here — not just on the WebSocket.
+    token = os.environ.get("OPENWATERS_TOKEN", "")
+    snapshot_url = SNAPSHOT_URL + ("?key=" + token if token else "")
+    print(f"Snapshot recovery: GET {SNAPSHOT_URL} ({'authenticated' if token else 'anonymous'} — token present: {'YES' if token else 'NO'})")
+    if not token:
+        print("Snapshot skipped: OPENWATERS_TOKEN not set, anonymous bbox is rejected (HTTP 400) — WebSocket will be the data source")
+        return 0
     try:
-        req = urllib.request.Request(SNAPSHOT_URL, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
+        req = urllib.request.Request(snapshot_url, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
         loop = asyncio.get_running_loop()
         def _do_fetch():
             with urllib.request.urlopen(req, timeout=20) as resp:
