@@ -198,71 +198,77 @@ async def snapshot_recovery():
     # by our 118 roster MMSIs instead — the API accepts mmsi where it rejects
     # bbox ("bbox or mmsi required for this key"). One GET covers all 118.
     token = os.environ.get("OPENWATERS_TOKEN", "")
-    mmsi_csv = ",".join(sorted(roster_mmsi_set))
-    snapshot_url = (f"https://ais.openwaters.io/v1/vessels?mmsi={mmsi_csv}"
-                    + ("&key=" + token if token else ""))
     print(f"Snapshot recovery: GET vessels?mmsi=(118 roster MMSIs) ({'authenticated' if token else 'anonymous'} — token present: {'YES' if token else 'NO'})")
     if not token:
         print("Snapshot skipped: OPENWATERS_TOKEN not set — WebSocket will be the data source")
         return 0
+    # The key caps MMSIs per request ("too many mmsi for this key" at 118),
+    # so query in small batches with a short pause between them.
+    BATCH = 10
+    mmsis = sorted(roster_mmsi_set)
+    matched_total = 0
     try:
-        req = urllib.request.Request(snapshot_url, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
         loop = asyncio.get_running_loop()
-        def _do_fetch():
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                import gzip
-                raw = resp.read()
-                if resp.headers.get("Content-Encoding") == "gzip":
-                    raw = gzip.decompress(raw)
-                return json.loads(raw.decode())
-        data = await loop.run_in_executor(None, _do_fetch)
-        features = data.get("features", [])
-        print(f"Snapshot: {len(features)} vessels in bbox")
-        matched = 0
-        for f in features:
-            props = f.get("properties", {})
-            mmsi = str(props.get("mmsi"))
-            if mmsi not in roster_mmsi_set:
-                continue
-            geom = f.get("geometry", {}).get("coordinates", [None, None])
-            lon, lat = geom[0], geom[1] if len(geom) >= 2 else (None, None)
-            if lat is None or lon is None:
-                continue
-            s = state[mmsi]
-            s.lat = lat
-            s.lon = lon
-            if props.get("sog") is not None:
-                s.sog = props.get("sog")
-            if props.get("cog") is not None:
-                s.cog = props.get("cog")
-            if props.get("heading") is not None:
-                s.heading = props.get("heading")
-            s.source = props.get("source")
-            s.station = props.get("station")
-            s.seen = props.get("seen")
-            s.last_update = time_module.time()
-            s.status = "live"
-            s.dirty = True
-            matched += 1
-        print(f"Snapshot matched {matched}/118 roster MMSIs")
-        return matched
-    except Exception as e:
-        # Log the response body (token-redacted) so HTTP 400s are diagnosable
-        # from the Actions log instead of guessing at the cause.
-        body = ""
-        try:
-            # Duck-typed HTTPError check (avoids rebinding the `urllib` name
-            # imported at module top level).
-            if hasattr(e, "read") and hasattr(e, "code"):
-                raw = e.read()
+        for i in range(0, len(mmsis), BATCH):
+            chunk = mmsis[i:i + BATCH]
+            url = ("https://ais.openwaters.io/v1/vessels?mmsi=" + ",".join(chunk)
+                   + "&key=" + token)
+            def _do_fetch(u=url):
+                req = urllib.request.Request(u, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    import gzip
+                    raw = resp.read()
+                    if resp.headers.get("Content-Encoding") == "gzip":
+                        raw = gzip.decompress(raw)
+                    return json.loads(raw.decode())
+            try:
+                data = await loop.run_in_executor(None, _do_fetch)
+            except Exception as e:
+                body = ""
                 try:
-                    raw = raw.decode("utf-8", errors="replace")
+                    if hasattr(e, "read") and hasattr(e, "code"):
+                        raw = e.read()
+                        try:
+                            raw = raw.decode("utf-8", errors="replace")
+                        except Exception:
+                            raw = repr(raw)
+                        body = raw[:200].replace(token, "***")
                 except Exception:
-                    raw = repr(raw)
-                body = raw[:300].replace(token, "***") if token else raw[:300]
-        except Exception:
-            pass
-        print(f"Snapshot failed: {e} body={body!r}")
+                    pass
+                print(f"Snapshot batch {i // BATCH + 1} failed: {e} body={body!r}")
+                await asyncio.sleep(0.5)
+                continue
+            features = data.get("features", [])
+            for f in features:
+                props = f.get("properties", {})
+                mmsi = str(props.get("mmsi"))
+                if mmsi not in roster_mmsi_set:
+                    continue
+                geom = f.get("geometry", {}).get("coordinates", [None, None])
+                lon, lat = geom[0], geom[1] if len(geom) >= 2 else (None, None)
+                if lat is None or lon is None:
+                    continue
+                s = state[mmsi]
+                s.lat = lat
+                s.lon = lon
+                if props.get("sog") is not None:
+                    s.sog = props.get("sog")
+                if props.get("cog") is not None:
+                    s.cog = props.get("cog")
+                if props.get("heading") is not None:
+                    s.heading = props.get("heading")
+                s.source = props.get("source")
+                s.station = props.get("station")
+                s.seen = props.get("seen")
+                s.last_update = time_module.time()
+                s.status = "live"
+                s.dirty = True
+                matched_total += 1
+            await asyncio.sleep(0.5)
+        print(f"Snapshot matched {matched_total}/118 roster MMSIs ({len(mmsis) // BATCH + 1} batches)")
+        return matched_total
+    except Exception as e:
+        print(f"Snapshot failed: {e}")
         return 0
 
 async def websocket_loop(duration):
