@@ -244,7 +244,21 @@ async def snapshot_recovery():
         print(f"Snapshot matched {matched}/118 roster MMSIs")
         return matched
     except Exception as e:
-        print(f"Snapshot failed: {e}")
+        # Log the response body (token-redacted) so HTTP 400s are diagnosable
+        # from the Actions log instead of guessing at the cause.
+        body = ""
+        try:
+            import urllib.error
+            if isinstance(e, urllib.error.HTTPError):
+                raw = e.read()
+                try:
+                    raw = raw.decode("utf-8", errors="replace")
+                except Exception:
+                    raw = repr(raw)
+                body = raw[:300].replace(token, "***") if token else raw[:300]
+        except Exception:
+            pass
+        print(f"Snapshot failed: {e} body={body!r}")
         return 0
 
 async def websocket_loop(duration):
