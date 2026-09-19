@@ -248,8 +248,9 @@ async def snapshot_recovery():
         # from the Actions log instead of guessing at the cause.
         body = ""
         try:
-            import urllib.error
-            if isinstance(e, urllib.error.HTTPError):
+            # Duck-typed HTTPError check (avoids rebinding the `urllib` name
+            # imported at module top level).
+            if hasattr(e, "read") and hasattr(e, "code"):
                 raw = e.read()
                 try:
                     raw = raw.decode("utf-8", errors="replace")
