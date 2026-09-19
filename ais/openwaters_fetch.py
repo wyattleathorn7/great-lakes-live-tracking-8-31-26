@@ -96,6 +96,38 @@ def kml_heading(h):
         return 360
     return hi
 
+def friendly_utc_stamp(stamp):
+    """Format a UTC timestamp for Google Earth balloon descriptions.
+
+    Accepts ISO '2026-09-19T02:01:01Z' (or 'YYYY-MM-DD HH:MM:SS UTC') and returns
+    12-hour Great Lakes local time with AM/PM plus a UTC reference, e.g.
+    '10:01 PM EDT Thu, Sep 18 (02:01 UTC Fri, Sep 19)'.
+    Unparseable input is returned unchanged so descriptions never go blank.
+    """
+    text = str(stamp or "").strip()
+    dt = None
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M%z", "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%d %H:%M:%S UTC", "%Y-%m-%d %H:%M UTC"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            break
+        except ValueError:
+            continue
+    if dt is None:
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return text
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    try:
+        from zoneinfo import ZoneInfo
+        local = dt.astimezone(ZoneInfo("America/Detroit"))
+    except Exception:
+        local = dt
+    return (local.strftime("%-I:%M %p %Z %a, %b %d")
+            + dt.strftime(" (%H:%M UTC %a, %b %d)"))
+
 def build_kml():
     kml_lines = []
     kml_lines.append('<?xml version="1.0" encoding="UTF-8"?>')
@@ -105,6 +137,9 @@ def build_kml():
     kml_lines.append(f'  <description><![CDATA[Production AIS vessel layer — 118 permanent placemarks (MMSI primary key, never name-matched).<br/>Source: {ATTRIBUTION}<br/>BBOX {BBOX_CSV} | Fetched {html.escape(fetched_at)} | One WebSocket bbox + roster filter 118, no individual MMSI subscriptions<br/>MMSI→placemark never changes, heading via &lt;IconStyle&gt;&lt;heading&gt; (HEADING 511 unavailable → COG fallback labelled), offline retained visibility 0.<br/>118/118 High, ceiling 180 not approached. Not for navigation.]]></description>')
     kml_lines.append('  <Style id="vesselActive"><IconStyle><scale>1.1</scale><Icon><href>icons/Copilot_20260831_192510.png</href></Icon><hotSpot x="0.5" y="0.5" xunits="fraction" yunits="fraction"/></IconStyle><LabelStyle><scale>0.7</scale></LabelStyle><BalloonStyle><text><![CDATA[$[description]]]></text></BalloonStyle></Style>')
     kml_lines.append('  <Style id="vesselOffline"><IconStyle><color>ff808080</color><scale>0.7</scale><Icon><href>icons/Copilot_20260831_192510.png</href></Icon></IconStyle><LabelStyle><scale>0.6</scale></LabelStyle></Style>')
+    # Human-friendly run timestamp (12-hour Great Lakes local + UTC ref).
+    # ExtendedData below keeps the machine-readable ISO value unchanged.
+    fetched_friendly = friendly_utc_stamp(fetched_at)
     for mmsi in sorted(roster_mmsi_set):
         entry = roster_mmsi_map[mmsi]
         # entry from JSON: dict with vessel, operator, type, imo, mmsi, call, flag, length, code
@@ -142,7 +177,7 @@ def build_kml():
             # sanitize heading for display: never show 511
             if s.heading == 511 or str(s.heading) == "511":
                 heading_str = "not available (COG fallback)"
-            desc = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>Type: {html.escape(vtype)}<br/>MMSI: {mmsi} | IMO: {imo} | Call: {html.escape(call)} | Flag: {flag} | Length: {length}<br/>Position: {s.lat:.5f}, {s.lon:.5f}<br/>HEADING: {heading_str} (source: {heading_src}) | COG: {cog_str} | SOG: {sog_str}<br/>AIS TIME: {html.escape(str(s.seen))} | Fetched: {html.escape(fetched_at)}<br/>Source: Open Waters — attribution preserved<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
+            desc = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>Type: {html.escape(vtype)}<br/>MMSI: {mmsi} | IMO: {imo} | Call: {html.escape(call)} | Flag: {flag} | Length: {length}<br/>Position: {s.lat:.5f}, {s.lon:.5f}<br/>HEADING: {heading_str} (source: {heading_src}) | COG: {cog_str} | SOG: {sog_str}<br/>AIS TIME: {html.escape(friendly_utc_stamp(s.seen))} | Fetched: {html.escape(fetched_friendly)}<br/>Source: Open Waters — attribution preserved<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
             extended = f'<ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="heading"><value>{s.heading if s.heading is not None else ""}</value></Data><Data name="cog"><value>{s.cog if s.cog is not None else ""}</value></Data><Data name="sog"><value>{s.sog if s.sog is not None else ""}</value></Data><Data name="ais_time"><value>{html.escape(str(s.seen))}</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data><Data name="callsign"><value>{html.escape(call)}</value></Data></ExtendedData>'
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)}</name><styleUrl>#vesselActive</styleUrl>')
             if icon_h is not None:
@@ -152,7 +187,7 @@ def build_kml():
             kml_lines.append(f'    {extended}')
             kml_lines.append(f'  </Placemark>')
         else:
-            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no Open Waters record within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_at)} | Source: Open Waters<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
+            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no Open Waters record within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Source: Open Waters<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)} (offline)</name><styleUrl>#vesselOffline</styleUrl><description>{desc_off}</description><Point><coordinates>0,0,0</coordinates></Point><visibility>0</visibility><ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="status"><value>No current position</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data></ExtendedData></Placemark>')
     kml_lines.append('</Document></kml>')
     return "\n".join(kml_lines)
