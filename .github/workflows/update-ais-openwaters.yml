@@ -124,43 +124,15 @@ jobs:
         run: |
           python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/Copilot_20260831_192510.png','icons/Copilot_20260831_192510.png'); z.close(); print('KMZ rebuilt with red icon 192510 (known-good) after Open Waters validation')"
 
-      - name: Deploy live KML and red icon to public delivery (stable NetworkLink endpoint)
-        env:
-          TOKEN: ${{ secrets.DELIVERY_TOKEN }}
-        run: |
-          # Stable public URLs for Google Earth (public delivery repo, not private):
-          # Live KML: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/great_lakes_ais.kml
-          # Red icon (known-good): https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/icons/Copilot_20260831_192510.png
-          # NetworkLink: https://wyattleathorn7.github.io/great-lakes-live-ais-delivery/great_lakes_live_ais_networklink.kml
-          # Private repo remains private — only live KML + icon + NetworkLink are published to public delivery repo
-          echo "Deploying live AIS KML + red icon (192510 known-good) + NetworkLink to public delivery repo wyattleathorn7/great-lakes-live-ais-delivery"
-          rm -rf /tmp/pages-deploy-ais
-          mkdir -p /tmp/pages-deploy-ais/icons
-          cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/great_lakes_ais.kml
-          cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/icons/Copilot_20260831_192510.png
-          if [ -f great_lakes_live_ais_networklink.kml ]; then
-            cp great_lakes_live_ais_networklink.kml /tmp/pages-deploy-ais/great_lakes_live_ais_networklink.kml
-          fi
-          # Also copy live KML as ais/great_lakes_ais.kml for compatibility
-          mkdir -p /tmp/pages-deploy-ais/ais
-          cp ais/great_lakes_ais.kml /tmp/pages-deploy-ais/ais/great_lakes_ais.kml
-          mkdir -p /tmp/pages-deploy-ais/ais/icons
-          cp ais/icons/Copilot_20260831_192510.png /tmp/pages-deploy-ais/ais/icons/Copilot_20260831_192510.png
-          # Preserve README if exists in public repo
-          curl -s https://raw.githubusercontent.com/wyattleathorn7/great-lakes-live-ais-delivery/main/README.md 2>/dev/null | head -5 | grep -q "Public delivery" && curl -s https://raw.githubusercontent.com/wyattleathorn7/great-lakes-live-ais-delivery/main/README.md > /tmp/pages-deploy-ais/README.md || echo "# Great Lakes Live AIS — Public Delivery" > /tmp/pages-deploy-ais/README.md
-          cd /tmp/pages-deploy-ais
-          git init -q
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "Deploy live AIS KML + red icon + NetworkLink $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "No delivery changes to commit"
-          git push --force "https://x-access-token:${TOKEN}@github.com/wyattleathorn7/great-lakes-live-ais-delivery.git" HEAD:main || echo "::warning::Public delivery deploy failed"
-
-      - name: Commit and push if changed (preserve AISHub independence)
+      - name: Commit and push if changed (single-repo AIS)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz
+          # This repo IS the public endpoint (stable Google Earth URLs live
+          # here), so the root KML copy refreshes in place — the old
+          # cross-repo deploy to great-lakes-live-ais-delivery is retired.
+          cp ais/great_lakes_ais.kml great_lakes_ais.kml
+          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz great_lakes_ais.kml
           if git diff --cached --quiet; then
             echo "No AIS changes to commit (Open Waters positions unchanged within window)"
             exit 0
