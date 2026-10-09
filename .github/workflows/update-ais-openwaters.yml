@@ -1,9 +1,12 @@
 name: Update AIS vessel positions (Open Waters — primary)
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  # No GitHub schedule (removed 2026-10-08): driven by the cron-job.org
+  # 5-minute pinger, chained through great-lakes-live-environment's
+  # fast-live workflow (five_min repository_dispatch). Manual dispatch kept.
   workflow_dispatch:
+  repository_dispatch:
+    types: [five_min]
 
 permissions:
   contents: write
