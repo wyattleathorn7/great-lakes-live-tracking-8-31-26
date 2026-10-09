@@ -132,7 +132,13 @@ jobs:
           # here), so the root KML copy refreshes in place — the old
           # cross-repo deploy to great-lakes-live-ais-delivery is retired.
           cp ais/great_lakes_ais.kml great_lakes_ais.kml
-          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz great_lakes_ais.kml
+          # Cache-bust the live KML for Google Earth clients: stamp a fresh
+          # ?v= token into the NetworkLink href every run (Pages ignores the
+          # query), otherwise clients keep rendering a stale cached KML and
+          # vessels appear frozen.
+          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          sed -i "s|great_lakes_ais.kml\(?v=[^\"'<]*\)\?|great_lakes_ais.kml?v=${STAMP}|g" great_lakes_live_ais_networklink.kml
+          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz great_lakes_ais.kml great_lakes_live_ais_networklink.kml
           if git diff --cached --quiet; then
             echo "No AIS changes to commit (Open Waters positions unchanged within window)"
             exit 0
