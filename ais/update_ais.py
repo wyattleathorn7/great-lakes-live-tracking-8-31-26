@@ -220,6 +220,11 @@ def main():
         mmsi_str=str(mmsi)
         ais=snap_map.get(mmsi_str)
         # Determine live position within interval
+        # NOTE (audit 2026-10-08): presence in the snapshot is NOT liveness.
+        # The live Open Waters path gates on vessel report age
+        # (report_epoch/is_live_state in openwaters_fetch.py) because feeds
+        # re-serve stale positions. If this AISHub flow is ever re-enabled,
+        # gate here on ais TIME age (<1800 s) the same way before rendering.
         is_live=False
         lat=None; lon=None; heading=None; cog=None; sog=None; navstat=None; ais_time=None; ais_name=None
         if ais:

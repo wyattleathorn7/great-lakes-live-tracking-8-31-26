@@ -115,6 +115,71 @@ def kml_heading(h):
         return 360
     return hi
 
+LIVE_WINDOW_SEC = 1800  # 30-min window (matches the "no live record within 30-min window" copy)
+
+
+def report_epoch(seen):
+    """Epoch seconds of the VESSEL's report time (never receipt time).
+
+    Accepts ISO variants + raw epoch (sec or ms). Returns None when the
+    report time is missing or unparseable — callers fall back to receipt
+    time only in that case (documented, never silent).
+    """
+    if seen is None:
+        return None
+    if isinstance(seen, (int, float)):
+        v = float(seen)
+        if v > 1e12:
+            v /= 1000.0  # epoch ms
+        return v if v > 0 else None
+    text = str(seen).strip()
+    if not text:
+        return None
+    try:
+        v = float(text)
+        if v > 1e12:
+            v /= 1000.0
+        return v if v > 0 else None
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M%z",
+                "%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d %H:%M:%S UTC",
+                "%Y-%m-%d %H:%M UTC"):
+        try:
+            dt = datetime.strptime(text, fmt)
+            break
+        except ValueError:
+            dt = None
+    if dt is None:
+        try:
+            dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def is_live_state(s, now=None):
+    """True only when the vessel's own report is fresh.
+
+    Liveness gates on REPORT age (s.seen), not receipt time: a feed that
+    re-serves hours-old positions must render those vessels offline, never
+    as live at stale coordinates. Missing/unparseable report time falls
+    back to receipt time (s.last_update) so sources without timestamps
+    keep working.
+    """
+    if now is None:
+        now = time_module.time()
+    if s.lat is None or s.lon is None:
+        return False
+    rep = report_epoch(s.seen)
+    base = rep if rep is not None else s.last_update
+    if not base:
+        return False
+    return (now - base) < LIVE_WINDOW_SEC
+
+
 def friendly_utc_stamp(stamp):
     """Format a UTC timestamp for Google Earth balloon descriptions.
 
@@ -164,7 +229,7 @@ def build_kml():
         # entry from JSON: dict with vessel, operator, type, imo, mmsi, call, flag, length, code
         s = state[mmsi]
         has_pos = s.lat is not None and s.lon is not None
-        is_live = has_pos and s.seen and (time_module.time() - s.last_update) < 1800
+        is_live = is_live_state(s) if has_pos else False
         vessel_name = entry.get("vessel", mmsi)
         code = entry.get("code", "")
         operator = entry.get("operator", "")
@@ -648,8 +713,11 @@ async def main():
     print(f"Reconnects: {stats['reconnects']}, events: {stats['events_received']}, roster_matched: {stats['roster_matched']}, unrostered: {stats['unrostered_discarded']}")
     print(f"Position changes: {stats['position_changes']}, KML flushes: {stats['kml_flushes']}, queue max: {stats['queue_depth_max']}, errors: {len(errors)}")
     print(f"AISStream secondary matched: {stats['aisstream_matched']}")
-    live = sum(1 for s in state.values() if s.status == "live" and s.lat is not None and (time_module.time() - s.last_update) < 1800)
-    print(f"Vessel state: live {live}, offline {118-live}")
+    live = sum(1 for s in state.values() if is_live_state(s))
+    stale_shown = sum(1 for s in state.values()
+                      if s.lat is not None and not is_live_state(s))
+    print(f"Vessel state: live {live}, offline/hidden {118-live} "
+          f"({stale_shown} have positions too old to show)")
     print(f"Snapshot matched {snapshot_matched}/118 initial")
     print("token present: YES" if os.environ.get("OPENWATERS_TOKEN") else "token present: NO")
     # Fail-safe: if no data, exit code signals workflow to preserve
