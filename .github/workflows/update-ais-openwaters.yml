@@ -108,12 +108,12 @@ jobs:
           except Exception as e:
               print(f"::error::Validation failed: XML invalid: {e}")
               sys.exit(1)
-          assert "vessel_red_512.png" in kml, "Red live icon vessel_red_512 missing"
+          assert "vessel_arrow_red_512.png" in kml, "Red live icon vessel_red_512 missing"
           assert "Copilot_20260831_1925101.png" not in kml, "Cache-bust 1925101 should not be active (restore known-good 192510)"
           assert "Copilot_20260831_193342.png" not in kml, "White offline icon should not be referenced"
           assert "Copilot_20260827_200928" not in kml, "Yellow icon leaked"
           assert "arrow.png" not in kml, "Default arrow leaked"
-          assert kml.count("vessel_red_512.png") >= 1, "Red icon vessel_red_512 not referenced"
+          assert kml.count("vessel_arrow_red_512.png") >= 1, "Red icon vessel_red_512 not referenced"
           # Offline vessels are intentionally hidden with visibility 0 (original correct behavior)
           assert "<visibility>0</visibility>" in kml, "Offline vessels should be hidden with visibility 0"
           print(f"Validation passed: 118 placemarks, 118 unique MMSIs, source Open Waters, no 511, no token, red vessel_red_512, offline hidden, XML valid")
@@ -122,7 +122,7 @@ jobs:
 
       - name: Rebuild KMZ (only after validation)
         run: |
-          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/vessel_red_512.png','icons/vessel_red_512.png'); z.close(); print('KMZ rebuilt with red icon 192510 (known-good) after Open Waters validation')"
+          python3 -c "import zipfile; z=zipfile.ZipFile('ais/great_lakes_ais.kmz','w',zipfile.ZIP_DEFLATED); z.write('ais/great_lakes_ais.kml','great_lakes_ais.kml'); z.write('ais/icons/vessel_arrow_red_512.png','icons/vessel_arrow_red_512.png'); z.close(); print('KMZ rebuilt with red icon 192510 (known-good) after Open Waters validation')"
 
       - name: Commit and push if changed (single-repo AIS)
         run: |
