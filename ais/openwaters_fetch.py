@@ -19,7 +19,7 @@ Open Waters Secondary AIS Fetch — Production (private repo only)
 - Token never printed: only "token present: YES/NO"
 
 Usage (workflow): OPENWATERS_TOKEN env must be set (GitHub Secret)
-  python3 ais/openwaters_fetch.py            # default 75 sec collection
+  python3 ais/openwaters_fetch.py            # default 180 sec collection
   python3 ais/openwaters_fetch.py --duration 90
   python3 ais/openwaters_fetch.py --duration 0 --snapshot-only  # snapshot initial only
 """
@@ -134,6 +134,14 @@ def is_position_message(msg_type):
     return str(msg_type or "") in POSITION_MESSAGE_TYPES
 
 
+def in_great_lakes_bbox(lat, lon):
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return False
+    return 41.0 <= lat <= 49.5 and -93.5 <= lon <= -66.0
+
+
 def report_epoch(seen):
     """Epoch seconds of the VESSEL's report time (never receipt time).
 
@@ -192,6 +200,8 @@ def apply_position_report(s, lat, lon, seen, msg_type, sog=None,
     except (TypeError, ValueError):
         return False
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return False
+    if not in_great_lakes_bbox(lat, lon):
         return False
     s.lat, s.lon = lat, lon
     s.position_seen = seen
@@ -664,7 +674,7 @@ async def kml_writer(duration):
 async def main():
     import argparse
     parser = argparse.ArgumentParser(description="Open Waters AIS fetch — Great Lakes 118")
-    parser.add_argument("--duration", type=int, default=75, help="WebSocket collection duration in seconds (default 75, 0= snapshot only)")
+    parser.add_argument("--duration", type=int, default=180, help="WebSocket collection duration in seconds (default 180, 0= snapshot only)")
     parser.add_argument("--snapshot-only", action="store_true", help="Only do snapshot recovery, no WebSocket")
     args = parser.parse_args()
     duration = args.duration
