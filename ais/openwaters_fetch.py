@@ -178,13 +178,14 @@ def report_epoch(seen):
 
 def apply_position_report(s, lat, lon, seen, msg_type, sog=None,
                           cog=None, heading=None, nav_status=None,
-                          source=None, station=None, now=None):
+                          source=None, station=None, now=None,
+                          allow_snapshot_position=False):
     """Apply only a genuine position-bearing AIS report to vessel state.
 
     Static/voyage messages may carry the vessel's cached coordinates. They
     must never refresh position age or make a hidden vessel live again.
     """
-    if not is_position_message(msg_type) or lat is None or lon is None:
+    if (not is_position_message(msg_type) and not allow_snapshot_position) or lat is None or lon is None:
         return False
     try:
         lat, lon = float(lat), float(lon)
@@ -196,11 +197,10 @@ def apply_position_report(s, lat, lon, seen, msg_type, sog=None,
     s.position_seen = seen
     s.seen = seen
     s.msg_type = msg_type
-    if sog is not None:
-        try:
-            s.sog = None if float(sog) >= 102.3 else float(sog)
-        except (TypeError, ValueError):
-            pass
+    try:
+        s.sog = None if sog is None or float(sog) >= 102.3 else float(sog)
+    except (TypeError, ValueError):
+        s.sog = None
     if cog is not None:
         try:
             s.cog = None if float(cog) >= 360 else float(cog)
@@ -211,11 +211,10 @@ def apply_position_report(s, lat, lon, seen, msg_type, sog=None,
             s.heading = None if int(float(heading)) == 511 else heading
         except (TypeError, ValueError):
             pass
-    if nav_status is not None:
-        try:
-            s.nav_status = int(nav_status)
-        except (TypeError, ValueError):
-            pass
+    try:
+        s.nav_status = int(nav_status) if nav_status is not None else None
+    except (TypeError, ValueError):
+        s.nav_status = None
     if source is not None:
         s.source = source
     if station is not None:
@@ -234,7 +233,7 @@ def is_live_state(s, now=None):
         return False
     # A vessel is stationary under the source's documented rule when its
     # reported status is anchored, moored, or aground, or its SOG is <1 kn.
-    stationary = s.nav_status in (1, 5, 6)
+    stationary = s.nav_status in (1, 5, 6) or s.msg_type in ("AidToNavigationReport", "BaseStationReport")
     if s.sog is not None:
         try:
             stationary = stationary or float(s.sog) < 1.0
@@ -343,7 +342,7 @@ def build_kml():
         else:
             off_window = "Open Waters / AISStream" if AISSTREAM_ENABLED else "Open Waters"
             off_srcs = "Open Waters + AISStream" if AISSTREAM_ENABLED else "Open Waters"
-            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no live record from {off_window} within 30-min window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Sources checked: {off_srcs}<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
+            desc_off = f"<![CDATA[<b>{html.escape(vessel_name)}</b> ({html.escape(code)})<br/>Operator: {html.escape(operator)}<br/>MMSI: {mmsi} | IMO: {imo} | Flag: {flag}<br/><b style=\"color:#cc0000\">AIS status: No current position received</b> (no current moving/stationary position from {off_window} within its freshness window)<br/>Permanent placemark retained — not moved to estimated position, not deleted, not substituted.<br/>Fetched: {html.escape(fetched_friendly)} | Sources checked: {off_srcs}<br/><i>{html.escape(DISCLAIMER)}</i>]]>"
             kml_lines.append(f'  <Placemark id="{mmsi}"><name>{html.escape(vessel_name)} (offline)</name><styleUrl>#vesselOffline</styleUrl><description>{desc_off}</description><Point><coordinates>0,0,0</coordinates></Point><visibility>0</visibility><ExtendedData><Data name="mmsi"><value>{mmsi}</value></Data><Data name="imo"><value>{imo}</value></Data><Data name="status"><value>No current position</value></Data><Data name="fetched_at"><value>{html.escape(fetched_at)}</value></Data><Data name="source"><value>Open Waters (ais.openwaters.io)</value></Data></ExtendedData></Placemark>')
     kml_lines.append('</Document></kml>')
     return "\n".join(kml_lines)
@@ -368,7 +367,7 @@ async def snapshot_recovery():
         for i in range(0, len(mmsis), BATCH):
             chunk = mmsis[i:i + BATCH]
             url = ("https://ais.openwaters.io/v1/vessels?mmsi=" + ",".join(chunk)
-                   + "&key=" + token)
+                   + "&max_age=7d&max_age_moving=30m&key=" + token)
             def _do_fetch(u=url):
                 req = urllib.request.Request(u, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
                 with urllib.request.urlopen(req, timeout=20) as resp:
@@ -411,7 +410,8 @@ async def snapshot_recovery():
                     sog=props.get("sog"), cog=props.get("cog"),
                     heading=props.get("heading"),
                     nav_status=props.get("nav_status"),
-                    source=props.get("source"), station=props.get("station")
+                    source=props.get("source"), station=props.get("station"),
+                    allow_snapshot_position=True
                 ):
                     stats["snapshot_non_position"] += 1
                     continue
