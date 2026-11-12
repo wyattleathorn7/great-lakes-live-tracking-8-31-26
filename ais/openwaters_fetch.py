@@ -11,7 +11,8 @@ Open Waters Secondary AIS Fetch — Production (private repo only)
   Runs Open-Waters-only when the key is unset.
 - In-memory 118 VesselState, KML flush throttled 7 sec, atomic tmp->replace, validation 118 unique
 - Heading: 511 unavailable → COG fallback, never writes 511, 0→360
-- Offline: retain placemark visibility 0, no deletion/estimation/substitution, 30-min staleness
+- Offline: hide stale positions; moving freshness 30 min, stationary freshness up to 7 days
+- Only position-report messages refresh coordinates or position age; static messages never revive a vessel
 - Reconnect: exponential backoff 1→60s + jitter, preserve state, snapshot recovery only for initial/reconnect
 - No mock fallback, no continuous poll, snapshot GET sends the personal token (anonymous bbox is rejected with HTTP 400)
 - Attribution: Source Open Waters (ais.openwaters.io) when actually used
@@ -87,6 +88,8 @@ class VesselState:
     station: str = None
     msg_type: str = None
     seen: str = None
+    position_seen: str = None
+    nav_status: int = None
     last_update: float = field(default_factory=lambda: 0)
     status: str = "offline"
     dirty: bool = False
@@ -115,7 +118,20 @@ def kml_heading(h):
         return 360
     return hi
 
-LIVE_WINDOW_SEC = 1800  # 30-min window (matches the "no live record within 30-min window" copy)
+MOVING_WINDOW_SEC = 1800
+STATIONARY_WINDOW_SEC = 7 * 24 * 60 * 60
+POSITION_MESSAGE_TYPES = frozenset({
+    "PositionReport",
+    "StandardClassBPositionReport",
+    "ExtendedClassBPositionReport",
+    "LongRangeAisBroadcastMessage",
+    "BaseStationReport",
+    "AidToNavigationReport",
+})
+
+
+def is_position_message(msg_type):
+    return str(msg_type or "") in POSITION_MESSAGE_TYPES
 
 
 def report_epoch(seen):
@@ -160,24 +176,77 @@ def report_epoch(seen):
     return dt.timestamp()
 
 
-def is_live_state(s, now=None):
-    """True only when the vessel's own report is fresh.
+def apply_position_report(s, lat, lon, seen, msg_type, sog=None,
+                          cog=None, heading=None, nav_status=None,
+                          source=None, station=None, now=None):
+    """Apply only a genuine position-bearing AIS report to vessel state.
 
-    Liveness gates on REPORT age (s.seen), not receipt time: a feed that
-    re-serves hours-old positions must render those vessels offline, never
-    as live at stale coordinates. Missing/unparseable report time falls
-    back to receipt time (s.last_update) so sources without timestamps
-    keep working.
+    Static/voyage messages may carry the vessel's cached coordinates. They
+    must never refresh position age or make a hidden vessel live again.
     """
+    if not is_position_message(msg_type) or lat is None or lon is None:
+        return False
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return False
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return False
+    s.lat, s.lon = lat, lon
+    s.position_seen = seen
+    s.seen = seen
+    s.msg_type = msg_type
+    if sog is not None:
+        try:
+            s.sog = None if float(sog) >= 102.3 else float(sog)
+        except (TypeError, ValueError):
+            pass
+    if cog is not None:
+        try:
+            s.cog = None if float(cog) >= 360 else float(cog)
+        except (TypeError, ValueError):
+            pass
+    if heading is not None:
+        try:
+            s.heading = None if int(float(heading)) == 511 else heading
+        except (TypeError, ValueError):
+            pass
+    if nav_status is not None:
+        try:
+            s.nav_status = int(nav_status)
+        except (TypeError, ValueError):
+            pass
+    if source is not None:
+        s.source = source
+    if station is not None:
+        s.station = station
+    s.last_update = now if now is not None else time_module.time()
+    s.status = "live"
+    s.dirty = True
+    return True
+
+
+def is_live_state(s, now=None):
+    """Apply Open Waters' moving/stationary position-age rules."""
     if now is None:
         now = time_module.time()
     if s.lat is None or s.lon is None:
         return False
-    rep = report_epoch(s.seen)
+    # A vessel is stationary under the source's documented rule when its
+    # reported status is anchored, moored, or aground, or its SOG is <1 kn.
+    stationary = s.nav_status in (1, 5, 6)
+    if s.sog is not None:
+        try:
+            stationary = stationary or float(s.sog) < 1.0
+        except (TypeError, ValueError):
+            pass
+    window = STATIONARY_WINDOW_SEC if stationary else MOVING_WINDOW_SEC
+    rep = report_epoch(s.position_seen)
     base = rep if rep is not None else s.last_update
     if not base:
         return False
-    return (now - base) < LIVE_WINDOW_SEC
+    age = now - base
+    return 0 <= age < window
 
 
 def friendly_utc_stamp(stamp):
@@ -331,28 +400,24 @@ async def snapshot_recovery():
                 mmsi = str(props.get("mmsi"))
                 if mmsi not in roster_mmsi_set:
                     continue
-                geom = f.get("geometry", {}).get("coordinates", [None, None])
-                lon, lat = geom[0], geom[1] if len(geom) >= 2 else (None, None)
-                if lat is None or lon is None:
+                geom = f.get("geometry", {}).get("coordinates") or []
+                if len(geom) < 2:
                     continue
+                lon, lat = geom[0], geom[1]
                 s = state[mmsi]
-                s.lat = lat
-                s.lon = lon
-                if props.get("sog") is not None:
-                    s.sog = props.get("sog")
-                if props.get("cog") is not None:
-                    s.cog = props.get("cog")
-                if props.get("heading") is not None:
-                    s.heading = props.get("heading")
-                s.source = props.get("source")
-                s.station = props.get("station")
-                s.seen = props.get("seen")
-                s.last_update = time_module.time()
-                s.status = "live"
-                s.dirty = True
+                msg_type = props.get("msg_type")
+                if not apply_position_report(
+                    s, lat, lon, props.get("seen"), msg_type,
+                    sog=props.get("sog"), cog=props.get("cog"),
+                    heading=props.get("heading"),
+                    nav_status=props.get("nav_status"),
+                    source=props.get("source"), station=props.get("station")
+                ):
+                    stats["snapshot_non_position"] += 1
+                    continue
                 matched_total += 1
             await asyncio.sleep(0.5)
-        print(f"Snapshot matched {matched_total}/118 roster MMSIs ({len(mmsis) // BATCH + 1} batches)")
+        print(f"Snapshot position reports matched {matched_total}/118 roster MMSIs; ignored non-position records: {stats['snapshot_non_position']}")
         return matched_total
     except Exception as e:
         print(f"Snapshot failed: {e}")
@@ -376,7 +441,7 @@ async def websocket_loop(duration):
         try:
             print(f"Connecting to wss://ais.openwaters.io/v1/stream with personal token, bbox {BBOX} — token present: YES")
             async with websockets.connect(uri_with_key, ping_interval=20, ping_timeout=10, max_queue=1024) as ws:
-                sub = {"type": "subscribe", "bbox": BBOX}
+                sub = {"type": "subscribe", "bbox": BBOX, "snapshot": True}
                 await ws.send(json.dumps(sub))
                 print(f"Sent subscribe {sub} with personal token")
                 backoff = 1
@@ -400,45 +465,39 @@ async def websocket_loop(duration):
                     if mmsi not in roster_mmsi_set:
                         stats["unrostered_discarded"] += 1
                         continue
-                    stats["roster_matched"] += 1
                     s = state[mmsi]
+                    msg_type = data.get("msg_type")
+                    if not is_position_message(msg_type):
+                        stats["non_position_events"] += 1
+                        continue
+                    msg_inner = data.get("message") if isinstance(data.get("message"), dict) else {}
+                    if len(msg_inner) == 1 and isinstance(list(msg_inner.values())[0], dict):
+                        msg_inner = list(msg_inner.values())[0]
+                    if not isinstance(msg_inner, dict):
+                        msg_inner = {}
+                    sog = msg_inner.get("Sog", msg_inner.get("sog"))
+                    cog = msg_inner.get("Cog", msg_inner.get("cog"))
+                    heading = msg_inner.get("TrueHeading", msg_inner.get("heading"))
+                    nav_status = msg_inner.get("NavigationalStatus", msg_inner.get("nav_status"))
                     old_lat, old_lon = s.lat, s.lon
-                    if data.get("lat") is not None and data.get("lon") is not None:
-                        s.lat = data["lat"]
-                        s.lon = data["lon"]
-                        if old_lat != s.lat or old_lon != s.lon:
-                            stats["position_changes"] += 1
-                    if data.get("message") and isinstance(data["message"], dict):
-                        msg_inner = data["message"]
-                        if isinstance(msg_inner, dict) and len(msg_inner) == 1 and isinstance(list(msg_inner.values())[0], dict):
-                            msg_inner = list(msg_inner.values())[0]
-                        if isinstance(msg_inner, dict):
-                            if "Sog" in msg_inner and msg_inner["Sog"] != 102.3:
-                                s.sog = msg_inner["Sog"]
-                            if "Cog" in msg_inner and msg_inner["Cog"] != 360:
-                                s.cog = msg_inner["Cog"]
-                            if "TrueHeading" in msg_inner and msg_inner["TrueHeading"] != 511:
-                                s.heading = msg_inner["TrueHeading"]
-                            if "heading" in msg_inner and msg_inner.get("heading") is not None and msg_inner.get("heading") != 511:
-                                s.heading = msg_inner["heading"]
-                            if "sog" in msg_inner and msg_inner.get("sog") is not None and msg_inner.get("sog") != 102.3:
-                                s.sog = msg_inner["sog"]
-                            if "cog" in msg_inner and msg_inner.get("cog") is not None and msg_inner.get("cog") != 360:
-                                s.cog = msg_inner["cog"]
-                    s.source = data.get("source", s.source)
-                    s.station = data.get("station", s.station)
-                    s.msg_type = data.get("msg_type", s.msg_type)
-                    if data.get("time"):
-                        s.seen = data["time"]
-                    s.last_update = time_module.time()
-                    s.status = "live"
-                    s.dirty = True
+                    applied = apply_position_report(
+                        s, data.get("lat"), data.get("lon"), data.get("time"),
+                        msg_type, sog=sog, cog=cog, heading=heading,
+                        nav_status=nav_status, source=data.get("source"),
+                        station=data.get("station")
+                    )
+                    if not applied:
+                        stats["invalid_position_events"] += 1
+                        continue
+                    stats["roster_matched"] += 1
+                    if old_lat != s.lat or old_lon != s.lon:
+                        stats["position_changes"] += 1
                     try:
                         event_queue.put_nowait(1)
                     except:
                         pass
                     if stats["roster_matched"] <= 3 or stats["roster_matched"] % 50 == 0:
-                        print(f"Roster match {stats['roster_matched']}: MMSI {mmsi} {s.lat},{s.lon} h {s.heading} cog {s.cog} at {s.seen} source {s.source}")
+                        print(f"Position match {stats['roster_matched']}: MMSI {mmsi} {s.lat},{s.lon} h {s.heading} cog {s.cog} at {s.seen} source {s.source}")
                     if time_module.time() >= end_time:
                         break
         except Exception as e:
@@ -526,23 +585,18 @@ async def aisstream_loop(duration):
                     if lat is None or lon is None:
                         continue
                     s = state[mmsi]
-                    if s.lat != lat or s.lon != lon:
+                    old_lat, old_lon = s.lat, s.lon
+                    applied = apply_position_report(
+                        s, lat, lon, _aisstream_time(meta), "PositionReport",
+                        sog=pr.get("Sog"), cog=pr.get("Cog"),
+                        heading=pr.get("TrueHeading"),
+                        nav_status=pr.get("NavigationalStatus"),
+                        source=AISSTREAM_TAG
+                    )
+                    if not applied:
+                        continue
+                    if old_lat != s.lat or old_lon != s.lon:
                         stats["position_changes"] += 1
-                    s.lat, s.lon = lat, lon
-                    sog = pr.get("Sog")
-                    cog = pr.get("Cog")
-                    hd = pr.get("TrueHeading")
-                    if sog is not None and sog != 102.3:
-                        s.sog = sog
-                    if cog is not None and cog != 360:
-                        s.cog = cog
-                    if hd is not None and hd != 511:
-                        s.heading = hd
-                    s.source = AISSTREAM_TAG
-                    s.seen = _aisstream_time(meta)
-                    s.last_update = time_module.time()
-                    s.status = "live"
-                    s.dirty = True
                     stats["roster_matched"] += 1
                     stats["aisstream_matched"] += 1
                     if stats["aisstream_matched"] <= 3 or stats["aisstream_matched"] % 25 == 0:
@@ -710,7 +764,7 @@ async def main():
         sys.exit(3)
     tmp.replace(OUTPUT_KML)
     print("\n=== FINAL REPORT ===")
-    print(f"Reconnects: {stats['reconnects']}, events: {stats['events_received']}, roster_matched: {stats['roster_matched']}, unrostered: {stats['unrostered_discarded']}")
+    print(f"Reconnects: {stats['reconnects']}, events: {stats['events_received']}, position_matches: {stats['roster_matched']}, non_position_events: {stats['non_position_events']}, invalid_positions: {stats['invalid_position_events']}, unrostered: {stats['unrostered_discarded']}")
     print(f"Position changes: {stats['position_changes']}, KML flushes: {stats['kml_flushes']}, queue max: {stats['queue_depth_max']}, errors: {len(errors)}")
     print(f"AISStream secondary matched: {stats['aisstream_matched']}")
     live = sum(1 for s in state.values() if is_live_state(s))
@@ -718,7 +772,7 @@ async def main():
                       if s.lat is not None and not is_live_state(s))
     print(f"Vessel state: live {live}, offline/hidden {118-live} "
           f"({stale_shown} have positions too old to show)")
-    print(f"Snapshot matched {snapshot_matched}/118 initial")
+    print(f"Snapshot position reports matched {snapshot_matched}/118 initial; non-position snapshot records ignored: {stats['snapshot_non_position']}")
     print("token present: YES" if os.environ.get("OPENWATERS_TOKEN") else "token present: NO")
     # Fail-safe: if no data, exit code signals workflow to preserve
     if stats["roster_matched"] == 0 and snapshot_matched == 0:
