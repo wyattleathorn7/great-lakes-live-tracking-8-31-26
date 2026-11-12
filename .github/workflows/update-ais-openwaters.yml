@@ -53,7 +53,7 @@ jobs:
           # clobber it, and `set -e` would kill the step before the fail-safe
           # restore below. `set +e` lets us handle fetch failure gracefully.
           set +e
-          python3 ais/openwaters_fetch.py --duration 240
+          python3 ais/openwaters_fetch.py --duration 180
           FETCH_EXIT=$?
           set -e
           echo "Fetch exit code: $FETCH_EXIT"
@@ -137,12 +137,10 @@ jobs:
           # here), so the root KML copy refreshes in place — the old
           # cross-repo deploy to great-lakes-live-ais-delivery is retired.
           cp ais/great_lakes_ais.kml great_lakes_ais.kml
-          # Cache-bust the live KML for Google Earth clients: stamp a fresh
-          # ?v= token into the NetworkLink href every run (Pages ignores the
-          # query), otherwise clients keep rendering a stale cached KML and
-          # vessels appear frozen.
-          STAMP=$(date -u +%Y%m%dT%H%M%SZ)
-          sed -i "s|great_lakes_ais.kml\(?v=[^\"'<]*\)\?|great_lakes_ais.kml?v=${STAMP}|g" great_lakes_live_ais_networklink.kml
+          # Keep the NetworkLink target URL stable. Google Earth retains the
+          # imported URL; changing this file's query string on each run cannot
+          # update a link already imported by a user. Its onInterval refresh
+          # requests the stable endpoint every 300 seconds.
           git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz great_lakes_ais.kml great_lakes_live_ais_networklink.kml
           if git diff --cached --quiet; then
             echo "No AIS changes to commit (Open Waters positions unchanged within window)"
