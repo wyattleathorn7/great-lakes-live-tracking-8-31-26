@@ -46,12 +46,14 @@ jobs:
           # Backup previous valid KML/KMZ before any overwrite — preserve on failure
           cp ais/great_lakes_ais.kml /tmp/great_lakes_ais.kml.bak
           cp ais/great_lakes_ais.kmz /tmp/great_lakes_ais.kmz.bak 2>/dev/null || true
-          # Run Open Waters fetch for 75 sec (one WebSocket, 7-sec KML flush, snapshot recovery only)
+          # Run Open Waters fetch for 240 sec (four minutes of the five-minute cycle).
+          # The stream subscription replays its current 30-minute position snapshot
+          # and then delivers live reports; the MMSI snapshot supplements stationary ships.
           # NOTE: capture exit code immediately — a plain `echo $?` after would
           # clobber it, and `set -e` would kill the step before the fail-safe
           # restore below. `set +e` lets us handle fetch failure gracefully.
           set +e
-          python3 ais/openwaters_fetch.py --duration 75
+          python3 ais/openwaters_fetch.py --duration 240
           FETCH_EXIT=$?
           set -e
           echo "Fetch exit code: $FETCH_EXIT"
