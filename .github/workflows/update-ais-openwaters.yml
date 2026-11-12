@@ -65,6 +65,9 @@ jobs:
             exit 0
           fi
 
+      - name: Test AIS freshness and position filtering
+        run: python3 -m unittest discover -s ais -p 'test_openwaters_freshness.py' -v
+
       - name: Validate Open Waters KML before commit (118 permanent placemarks, Open Waters source)
         run: |
           echo "Validating KML has exactly 118 placemarks, 118 unique MMSIs, source Open Waters, no 511 heading ..."
