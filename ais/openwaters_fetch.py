@@ -35,7 +35,7 @@ import sys
 import os
 import random
 from datetime import datetime, timezone
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 # --- Config ---
@@ -106,6 +106,14 @@ stats["kml_flushes"] = 0
 stats["queue_depth_max"] = 0
 errors = []
 event_queue = asyncio.Queue(maxsize=1024)
+
+# Independent source-coverage accounting. MMSIs are retained in separate
+# sets per source; a vessel reported by both feeds appears in BOTH lists.
+SOURCE_COVERAGE_PATH = pathlib.Path(__file__).parent / "source_coverage_latest.json"
+openwaters_mmsis = set()
+openwaters_upstream_mmsis = defaultdict(set)
+openwaters_station_mmsis = defaultdict(set)
+aisstream_mmsis = set()
 
 def kml_heading(h):
     try:
@@ -258,6 +266,83 @@ def is_live_state(s, now=None):
     return 0 <= age < window
 
 
+def write_source_coverage_report(duration, snapshot_matched=0):
+    """Persist independent source coverage without collapsing overlaps."""
+    upstream = {
+        src: sorted(mmsis)
+        for src, mmsis in sorted(openwaters_upstream_mmsis.items())
+    }
+    stations = {
+        station: sorted(mmsis)
+        for station, mmsis in sorted(openwaters_station_mmsis.items())
+    }
+    by_vessel = []
+    for mmsi in sorted(roster_mmsi_set):
+        entry = roster_mmsi_map[mmsi]
+        sources = []
+        if mmsi in openwaters_mmsis:
+            sources.append("Open Waters")
+        if mmsi in aisstream_mmsis:
+            sources.append("AISStream")
+        by_vessel.append({
+            "mmsi": mmsi,
+            "vessel": entry.get("vessel", mmsi),
+            "operator": entry.get("operator", ""),
+            "sources": sources,
+            "open_waters_upstream_sources": sorted(
+                src for src, ids in openwaters_upstream_mmsis.items()
+                if mmsi in ids),
+        })
+    overlap = sorted(openwaters_mmsis & aisstream_mmsis)
+    openwaters_only = sorted(openwaters_mmsis - aisstream_mmsis)
+    aisstream_only = sorted(aisstream_mmsis - openwaters_mmsis)
+    report = {
+        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "collection_duration_seconds": duration,
+        "roster_count": len(roster_mmsi_set),
+        "snapshot_position_reports_matched": snapshot_matched,
+        "sources": {
+            "Open Waters": {
+                "unique_roster_vessels": len(openwaters_mmsis),
+                "mmsi": sorted(openwaters_mmsis),
+                "upstream_source_mmsi": upstream,
+                "upstream_station_mmsi": stations,
+            },
+            "AISStream": {
+                "unique_roster_vessels": len(aisstream_mmsis),
+                "mmsi": sorted(aisstream_mmsis),
+            },
+        },
+        "overlap_mmsi": overlap,
+        "open_waters_only_mmsi": openwaters_only,
+        "aisstream_only_mmsi": aisstream_only,
+        "not_seen_by_either_mmsi": sorted(
+            roster_mmsi_set - openwaters_mmsis - aisstream_mmsis),
+        "by_vessel": by_vessel,
+        "interpretation": (
+            "Source lists are independent, not deduplicated. A vessel heard "
+            "by both feeds is listed under both. Open Waters upstream_source "
+            "records the source tag attached to the Open Waters event; "
+            "AISStream is also tracked separately as the direct AISStream "
+            "connection."
+        ),
+    }
+    SOURCE_COVERAGE_PATH.write_text(
+        json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8")
+    print(
+        "Independent source coverage: "
+        f"Open Waters {len(openwaters_mmsis)}/118; "
+        f"AISStream {len(aisstream_mmsis)}/118; "
+        f"both {len(overlap)}; neither "
+        f"{len(roster_mmsi_set - openwaters_mmsis - aisstream_mmsis)}"
+    )
+    print("Open Waters upstream source coverage: " + ", ".join(
+        f"{src}={len(ids)}" for src, ids in sorted(openwaters_upstream_mmsis.items())
+    ))
+    return report
+
+
 def friendly_utc_stamp(stamp):
     """Format a UTC timestamp for Google Earth balloon descriptions.
 
@@ -377,7 +462,7 @@ async def snapshot_recovery():
         for i in range(0, len(mmsis), BATCH):
             chunk = mmsis[i:i + BATCH]
             url = ("https://ais.openwaters.io/v1/vessels?mmsi=" + ",".join(chunk)
-                   + "&max_age=7d&max_age_moving=30m&key=" + token)
+                   + "&max_age=168h&max_age_moving=30m&key=" + token)
             def _do_fetch(u=url):
                 req = urllib.request.Request(u, headers={"User-Agent": "OpenWatersFetch/1.0", "Accept": "application/json"})
                 with urllib.request.urlopen(req, timeout=20) as resp:
@@ -426,6 +511,14 @@ async def snapshot_recovery():
                     stats["snapshot_non_position"] += 1
                     continue
                 matched_total += 1
+                openwaters_mmsis.add(mmsi)
+                upstream_source = str(props.get("source") or "unknown")
+                openwaters_upstream_mmsis[upstream_source].add(mmsi)
+                upstream_station = str(props.get("station") or "")
+                if upstream_station:
+                    openwaters_station_mmsis[
+                        f"{upstream_source}|{upstream_station}"
+                    ].add(mmsi)
             await asyncio.sleep(0.5)
         print(f"Snapshot position reports matched {matched_total}/118 roster MMSIs; ignored non-position records: {stats['snapshot_non_position']}")
         return matched_total
@@ -500,6 +593,14 @@ async def websocket_loop(duration):
                         stats["invalid_position_events"] += 1
                         continue
                     stats["roster_matched"] += 1
+                    openwaters_mmsis.add(mmsi)
+                    upstream_source = str(data.get("source") or "unknown")
+                    openwaters_upstream_mmsis[upstream_source].add(mmsi)
+                    upstream_station = str(data.get("station") or "")
+                    if upstream_station:
+                        openwaters_station_mmsis[
+                            f"{upstream_source}|{upstream_station}"
+                        ].add(mmsi)
                     if old_lat != s.lat or old_lon != s.lon:
                         stats["position_changes"] += 1
                     try:
@@ -609,6 +710,7 @@ async def aisstream_loop(duration):
                         stats["position_changes"] += 1
                     stats["roster_matched"] += 1
                     stats["aisstream_matched"] += 1
+                    aisstream_mmsis.add(mmsi)
                     if stats["aisstream_matched"] <= 3 or stats["aisstream_matched"] % 25 == 0:
                         print(f"AISStream match {stats['aisstream_matched']}: MMSI {mmsi} {lat},{lon} at {s.seen}")
                     if time_module.time() >= end_time:
@@ -717,6 +819,7 @@ async def main():
         tmp.replace(OUTPUT_KML)
         print(f"Wrote KML {OUTPUT_KML} — snapshot matched {snapshot_matched}/118, live {sum(1 for s in state.values() if s.status=='live')}")
         print("token present: YES" if os.environ.get("OPENWATERS_TOKEN") else "token present: NO")
+        write_source_coverage_report(duration, snapshot_matched)
         return
     # Check token present before WebSocket
     if not os.environ.get("OPENWATERS_TOKEN"):
@@ -783,6 +886,7 @@ async def main():
     print(f"Vessel state: live {live}, offline/hidden {118-live} "
           f"({stale_shown} have positions too old to show)")
     print(f"Snapshot position reports matched {snapshot_matched}/118 initial; non-position snapshot records ignored: {stats['snapshot_non_position']}")
+    write_source_coverage_report(duration, snapshot_matched)
     print("token present: YES" if os.environ.get("OPENWATERS_TOKEN") else "token present: NO")
     # Fail-safe: if no data, exit code signals workflow to preserve
     if stats["roster_matched"] == 0 and snapshot_matched == 0:
