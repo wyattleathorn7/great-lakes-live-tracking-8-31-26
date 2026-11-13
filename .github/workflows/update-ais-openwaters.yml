@@ -144,7 +144,7 @@ jobs:
           # imported URL; changing this file's query string on each run cannot
           # update a link already imported by a user. Its onInterval refresh
           # requests the stable endpoint every 300 seconds.
-          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz great_lakes_ais.kml great_lakes_live_ais_networklink.kml
+          git add ais/great_lakes_ais.kml ais/great_lakes_ais.kmz great_lakes_ais.kml great_lakes_live_ais_networklink.kml ais/source_coverage_latest.json
           if git diff --cached --quiet; then
             echo "No AIS changes to commit (Open Waters positions unchanged within window)"
             exit 0
