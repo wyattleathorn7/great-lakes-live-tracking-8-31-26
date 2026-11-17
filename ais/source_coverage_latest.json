@@ -1,11 +1,11 @@
 {
-  "fetched_at": "2026-11-17T19:53:47Z",
+  "fetched_at": "2026-11-17T19:58:52Z",
   "collection_duration_seconds": 180,
   "roster_count": 118,
   "snapshot_position_reports_matched": 43,
   "sources": {
     "Open Waters": {
-      "unique_roster_vessels": 43,
+      "unique_roster_vessels": 44,
       "mmsi": [
         "316001633",
         "316001637",
@@ -25,6 +25,7 @@
         "316023341",
         "316026695",
         "316031354",
+        "316034846",
         "316035905",
         "316036089",
         "316036228",
@@ -54,27 +55,24 @@
       "upstream_source_mmsi": {
         "aishub": [
           "316001633",
-          "316001637",
           "316001701",
           "316001834",
           "316001836",
-          "316001844",
-          "316002063",
           "316006868",
           "316009090",
           "316009457",
           "316014060",
+          "316014170",
           "316015050",
           "316017110",
           "316018477",
           "316023341",
           "316026695",
           "316031354",
+          "316034846",
           "316035905",
-          "316036089",
           "316036228",
           "316036229",
-          "316036419",
           "316051091",
           "316052496",
           "316055401",
@@ -97,11 +95,11 @@
           "316001637",
           "316001844",
           "316002063",
-          "316009090",
           "316014170",
           "316018477",
+          "316023341",
+          "316026695",
           "316031354",
-          "316035905",
           "316036089",
           "316036228",
           "316036419",
@@ -111,9 +109,9 @@
           "316055401",
           "338888000",
           "366904910",
-          "366936810",
           "366938760",
           "366971360",
+          "367084930",
           "367341010",
           "367511590",
           "368183000",
@@ -123,27 +121,24 @@
       "upstream_station_mmsi": {
         "aishub|aishub": [
           "316001633",
-          "316001637",
           "316001701",
           "316001834",
           "316001836",
-          "316001844",
-          "316002063",
           "316006868",
           "316009090",
           "316009457",
           "316014060",
+          "316014170",
           "316015050",
           "316017110",
           "316018477",
           "316023341",
           "316026695",
           "316031354",
+          "316034846",
           "316035905",
-          "316036089",
           "316036228",
           "316036229",
-          "316036419",
           "316051091",
           "316052496",
           "316055401",
@@ -166,11 +161,11 @@
           "316001637",
           "316001844",
           "316002063",
-          "316009090",
           "316014170",
           "316018477",
+          "316023341",
+          "316026695",
           "316031354",
-          "316035905",
           "316036089",
           "316036228",
           "316036419",
@@ -180,9 +175,9 @@
           "316055401",
           "338888000",
           "366904910",
-          "366936810",
           "366938760",
           "366971360",
+          "367084930",
           "367341010",
           "367511590",
           "368183000",
@@ -191,37 +186,34 @@
       }
     },
     "AISStream": {
-      "unique_roster_vessels": 9,
+      "unique_roster_vessels": 8,
       "mmsi": [
         "316001637",
         "316001844",
-        "316031354",
-        "316055401",
-        "366904910",
-        "366938760",
-        "367341010",
-        "367511590",
-        "369941000"
+        "316002063",
+        "316018477",
+        "316023341",
+        "316052496",
+        "338888000",
+        "367084930"
       ]
     }
   },
   "overlap_mmsi": [
     "316001637",
     "316001844",
-    "316031354",
-    "316055401",
-    "366904910",
-    "366938760",
-    "367341010",
-    "367511590",
-    "369941000"
+    "316002063",
+    "316018477",
+    "316023341",
+    "316052496",
+    "338888000",
+    "367084930"
   ],
   "open_waters_only_mmsi": [
     "316001633",
     "316001701",
     "316001834",
     "316001836",
-    "316002063",
     "316006868",
     "316009090",
     "316009457",
@@ -229,9 +221,9 @@
     "316014170",
     "316015050",
     "316017110",
-    "316018477",
-    "316023341",
     "316026695",
+    "316031354",
+    "316034846",
     "316035905",
     "316036089",
     "316036228",
@@ -239,18 +231,21 @@
     "316036419",
     "316043882",
     "316051091",
-    "316052496",
     "316053597",
-    "338888000",
+    "316055401",
+    "366904910",
     "366936810",
     "366937490",
+    "366938760",
     "366971360",
     "366999977",
     "366999979",
-    "367084930",
     "367121040",
+    "367341010",
+    "367511590",
     "367666850",
-    "368183000"
+    "368183000",
+    "369941000"
   ],
   "aisstream_only_mmsi": [],
   "not_seen_by_either_mmsi": [
@@ -278,7 +273,6 @@
     "316018750",
     "316018880",
     "316029000",
-    "316034846",
     "316041965",
     "316044371",
     "316049500",
@@ -366,7 +360,6 @@
         "AISStream"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
         "aisstream"
       ]
     },
@@ -419,7 +412,6 @@
         "AISStream"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
         "aisstream"
       ]
     },
@@ -435,10 +427,10 @@
       "vessel": "Sea Eagle II / St Marys Cement II",
       "operator": "Port City",
       "sources": [
-        "Open Waters"
+        "Open Waters",
+        "AISStream"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
         "aisstream"
       ]
     },
@@ -475,8 +467,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -572,6 +563,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
+        "aishub",
         "aisstream"
       ]
     },
@@ -644,7 +636,8 @@
       "vessel": "Algoma Discovery",
       "operator": "Algoma",
       "sources": [
-        "Open Waters"
+        "Open Waters",
+        "AISStream"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -670,10 +663,12 @@
       "vessel": "Whitefish Bay",
       "operator": "CSL",
       "sources": [
-        "Open Waters"
+        "Open Waters",
+        "AISStream"
       ],
       "open_waters_upstream_sources": [
-        "aishub"
+        "aishub",
+        "aisstream"
       ]
     },
     {
@@ -684,7 +679,8 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub"
+        "aishub",
+        "aisstream"
       ]
     },
     {
@@ -699,8 +695,7 @@
       "vessel": "Captain Henry Jackman",
       "operator": "Algoma",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -711,8 +706,12 @@
       "mmsi": "316034846",
       "vessel": "Algoma Niagara",
       "operator": "Algoma",
-      "sources": [],
-      "open_waters_upstream_sources": []
+      "sources": [
+        "Open Waters"
+      ],
+      "open_waters_upstream_sources": [
+        "aishub"
+      ]
     },
     {
       "mmsi": "316035905",
@@ -722,8 +721,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -734,7 +732,6 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
         "aisstream"
       ]
     },
@@ -769,7 +766,6 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
         "aisstream"
       ]
     },
@@ -835,7 +831,8 @@
       "vessel": "Northern Venture",
       "operator": "McKeil",
       "sources": [
-        "Open Waters"
+        "Open Waters",
+        "AISStream"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -865,8 +862,7 @@
       "vessel": "Algosolis",
       "operator": "Algoma Tankers",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -899,7 +895,8 @@
       "vessel": "Clyde S VanEnkevort / Erie Trader",
       "operator": "VTB",
       "sources": [
-        "Open Waters"
+        "Open Waters",
+        "AISStream"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -1002,8 +999,7 @@
       "vessel": "Kaye E Barker",
       "operator": "Interlake",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -1039,8 +1035,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -1073,8 +1068,7 @@
       "vessel": "Sam Laud",
       "operator": "ASC",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -1238,10 +1232,12 @@
       "vessel": "Samuel de Champlain / Innovation",
       "operator": "Andrie",
       "sources": [
-        "Open Waters"
+        "Open Waters",
+        "AISStream"
       ],
       "open_waters_upstream_sources": [
-        "aishub"
+        "aishub",
+        "aisstream"
       ]
     },
     {
@@ -1274,8 +1270,7 @@
       "vessel": "Manitowoc",
       "operator": "Grand River",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -1301,8 +1296,7 @@
       "vessel": "Defiance / Ashtabula",
       "operator": "Grand River",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -1350,8 +1344,7 @@
       "vessel": "USCGC Sequoia WLB-215",
       "operator": "USCG",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
