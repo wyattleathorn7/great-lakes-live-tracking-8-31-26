@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-11-26T06:34:02Z",
+  "fetched_at": "2026-11-26T06:38:58Z",
   "collection_duration_seconds": 180,
   "roster_count": 118,
   "snapshot_position_reports_matched": 33,
@@ -43,9 +43,11 @@
       ],
       "upstream_source_mmsi": {
         "aishub": [
+          "316001633",
           "316002063",
           "316002065",
           "316009457",
+          "316011710",
           "316011905",
           "316013966",
           "316015050",
@@ -57,11 +59,10 @@
           "316036229",
           "316050854",
           "316051091",
-          "316053441",
           "316053597",
-          "316055401",
           "338888000",
           "366893910",
+          "366904910",
           "366936810",
           "366938760",
           "366999977",
@@ -71,19 +72,20 @@
           "367121040",
           "367341010",
           "367666850",
+          "368251670",
           "369941000"
         ],
         "aisstream": [
           "316001633",
+          "316002063",
           "316002065",
-          "316009457",
           "316011710",
-          "316011905",
+          "316013966",
           "316023341",
           "316035905",
           "316036229",
           "316050854",
-          "316051091",
+          "316053441",
           "316053597",
           "316055401",
           "338888000",
@@ -92,16 +94,17 @@
           "366938760",
           "366999978",
           "366999979",
-          "367084930",
           "367121040",
           "368251670"
         ]
       },
       "upstream_station_mmsi": {
         "aishub|aishub": [
+          "316001633",
           "316002063",
           "316002065",
           "316009457",
+          "316011710",
           "316011905",
           "316013966",
           "316015050",
@@ -113,11 +116,10 @@
           "316036229",
           "316050854",
           "316051091",
-          "316053441",
           "316053597",
-          "316055401",
           "338888000",
           "366893910",
+          "366904910",
           "366936810",
           "366938760",
           "366999977",
@@ -127,19 +129,20 @@
           "367121040",
           "367341010",
           "367666850",
+          "368251670",
           "369941000"
         ],
         "aisstream|aisstream": [
           "316001633",
+          "316002063",
           "316002065",
-          "316009457",
           "316011710",
-          "316011905",
+          "316013966",
           "316023341",
           "316035905",
           "316036229",
           "316050854",
-          "316051091",
+          "316053441",
           "316053597",
           "316055401",
           "338888000",
@@ -148,24 +151,17 @@
           "366938760",
           "366999978",
           "366999979",
-          "367084930",
           "367121040",
           "368251670"
         ]
       }
     },
     "AISStream": {
-      "unique_roster_vessels": 2,
-      "mmsi": [
-        "316023341",
-        "366938760"
-      ]
+      "unique_roster_vessels": 0,
+      "mmsi": []
     }
   },
-  "overlap_mmsi": [
-    "316023341",
-    "366938760"
-  ],
+  "overlap_mmsi": [],
   "open_waters_only_mmsi": [
     "316001633",
     "316002063",
@@ -177,6 +173,7 @@
     "316015050",
     "316018031",
     "316018750",
+    "316023341",
     "316026695",
     "316035905",
     "316036229",
@@ -189,6 +186,7 @@
     "366893910",
     "366904910",
     "366936810",
+    "366938760",
     "366999977",
     "366999978",
     "366999979",
@@ -303,6 +301,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
+        "aishub",
         "aisstream"
       ]
     },
@@ -370,7 +369,8 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub"
+        "aishub",
+        "aisstream"
       ]
     },
     {
@@ -414,8 +414,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -433,6 +432,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
+        "aishub",
         "aisstream"
       ]
     },
@@ -444,8 +444,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -456,7 +455,8 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub"
+        "aishub",
+        "aisstream"
       ]
     },
     {
@@ -602,8 +602,7 @@
       "vessel": "Whitefish Bay",
       "operator": "CSL",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -742,8 +741,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -761,7 +759,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub"
+        "aisstream"
       ]
     },
     {
@@ -784,7 +782,6 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
         "aisstream"
       ]
     },
@@ -924,6 +921,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
+        "aishub",
         "aisstream"
       ]
     },
@@ -986,8 +984,7 @@
       "vessel": "Sam Laud",
       "operator": "ASC",
       "sources": [
-        "Open Waters",
-        "AISStream"
+        "Open Waters"
       ],
       "open_waters_upstream_sources": [
         "aishub",
@@ -1156,8 +1153,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
-        "aishub",
-        "aisstream"
+        "aishub"
       ]
     },
     {
@@ -1244,6 +1240,7 @@
         "Open Waters"
       ],
       "open_waters_upstream_sources": [
+        "aishub",
         "aisstream"
       ]
     },
